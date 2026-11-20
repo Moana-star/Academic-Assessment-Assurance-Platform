@@ -1,4 +1,4 @@
-# Development Plan and Division of Responsibilities
+# Development Plan
 
 ## Project objective
 
@@ -6,42 +6,37 @@ Build an academic prototype that supports student identity checks before examina
 
 ## Delivery phases
 
-| Phase | Deliverable | Lead |
-|---|---|---|
-| 1 | Repository scaffold, Django setup, SQLite configuration | Samuel |
-| 2 | Initial template and static asset layout | Frontend developer |
-| 3 | Data models and migrations | Samuel |
-| 4 | Authentication and role permissions | Samuel |
-| 5 | Login and role-specific dashboard interfaces | Both |
-| 6 | Student and invigilator management | Both |
-| 7 | Examination scheduling and registration | Both |
-| 8 | Simulated fingerprint enrollment and verification | Samuel |
-| 9 | Fingerprint interaction interface | Frontend developer |
-| 10 | Facial enrollment and recognition service evaluation | Samuel |
-| 11 | Webcam capture and submission interface | Frontend developer |
-| 12 | Combined verification and manual-review workflow | Samuel |
-| 13 | Attendance and audit history | Both |
-| 14 | Reports and statistics | Both |
-| 15 | Integration, security review, testing, and documentation | Both |
+| Phase | Deliverable |
+|---|---|
+| 1 | Repository structure, Django setup, and local database configuration |
+| 2 | Application templates and static asset structure |
+| 3 | Data models and database migrations |
+| 4 | Authentication and role-based permissions |
+| 5 | Login and role-specific dashboard interfaces |
+| 6 | Student and invigilator management |
+| 7 | Examination scheduling and registration |
+| 8 | Simulated fingerprint enrollment and verification |
+| 9 | Fingerprint interaction interface |
+| 10 | Facial enrollment and recognition-service evaluation |
+| 11 | Webcam capture and submission interface |
+| 12 | Combined verification and manual-review workflow |
+| 13 | Attendance records and audit history |
+| 14 | Reports and statistics |
+| 15 | Integration, security review, testing, and documentation |
 
-## Backend ownership — Samuel
+## Application structure
 
-- `config/`: Django settings, root URLs, ASGI and WSGI configuration.
-- `integrity/`: models, forms, views, URLs, permissions, admin configuration.
-- `integrity/services/`: fingerprint adapter, face recognition adapter, combined verification, attendance rules.
-- `integrity/tests/`: automated backend tests.
-- Database migrations, authentication, authorization, API contracts, validation, and audit logging.
-
-## Frontend ownership
-
+- `config/`: Django settings, root URLs, ASGI, and WSGI configuration.
+- `integrity/`: models, forms, views, URLs, permissions, admin configuration, and tests.
+- `integrity/services/`: fingerprint adapter, face-processing adapter, combined verification, and attendance rules.
 - `templates/`: Django templates and reusable page layouts.
 - `static/css/`: responsive stylesheets.
 - `static/js/`: webcam capture, form behavior, API requests, and user feedback.
 - `static/images/`: non-sensitive branding and interface assets.
 
-## Shared responsibilities
+## Integration requirements
 
-Agree on model fields, URL names, permissions, CSRF handling, and API request/response schemas before integration. Coordinate edits to `settings.py`, root and app URL configuration, and shared base templates.
+Coordinate model fields, URL names, permissions, CSRF handling, and API request/response schemas whenever application modules are integrated. Changes to shared settings, URL configuration, and base templates should be checked across the application.
 
 ## Definition of done
 
