@@ -1,0 +1,8 @@
+# Core web framework
+Django>=5.2,<6.0
+
+# Image upload handling
+Pillow>=10.0
+
+# Planned image processing dependency; install/test against your Python version
+opencv-python>=4.10

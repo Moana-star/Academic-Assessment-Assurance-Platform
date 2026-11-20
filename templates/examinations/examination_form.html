@@ -1,0 +1,1 @@
+{% extends 'base.html' %}{% block content %}<div class='form-wrap'><p class='eyebrow'>Schedule</p><h1>{{ title }}</h1><form method='post'>{% csrf_token %}{{ form.as_p }}<button class='button'>Save examination</button></form></div>{% endblock %}
