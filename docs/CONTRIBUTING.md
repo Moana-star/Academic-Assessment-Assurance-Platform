@@ -1,16 +1,27 @@
-# Collaboration Guide
+# Development Guide
 
-1. Clone the repository and create a local virtual environment when implementation begins.
-2. Pull the latest `main` before starting work.
-3. Create a feature branch, for example `feature/student-management` or `feature/face-enrollment-ui`.
-4. Keep changes focused and commit with clear messages.
-5. Run relevant tests and inspect the diff before pushing.
-6. Open a pull request to `main`; request review from the other developer.
-7. Resolve conflicts together. Do not force-push shared branches without agreement.
+1. Clone the repository and create a local virtual environment.
+2. Pull the latest `main` branch before starting a new development session.
+3. Create a focused feature branch, for example `feature/student-management` or `feature/face-enrollment-ui`.
+4. Keep changes focused and use clear commit messages.
+5. Run relevant checks and tests before committing.
+6. Review the complete diff before pushing changes.
+7. Keep documentation aligned with application behavior and configuration.
 
-## File ownership
+## Project structure
 
-Backend work primarily belongs in `config/` and `integrity/`. Frontend work primarily belongs in `templates/` and `static/`. Shared files require coordination.
+- Backend application code and configuration are primarily in `config/` and `integrity/`.
+- Frontend templates and browser assets are primarily in `templates/` and `static/`.
+- Project architecture, API contracts, and development notes are in `docs/`.
+
+## Validation
+
+Run the following commands from the project root:
+
+```powershell
+python manage.py check
+python manage.py test
+```
 
 ## Never commit
 
