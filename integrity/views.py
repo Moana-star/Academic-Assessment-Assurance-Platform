@@ -2,9 +2,14 @@ import base64
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth import get_user_model
+from django.contrib.auth.password_validation import validate_password
+from django.core.exceptions import ValidationError
+from django.http import Http404
+from django.conf import settings
 from django.db import transaction
 from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import timezone
+from django.utils.crypto import constant_time_compare
 from .forms import ExaminationForm, RegistrationForm, StudentForm
 from .models import Attendance, AuditLog, BiometricProfile, Examination, ManualReview, Student, VerificationLog
 from .permissions import role_required
@@ -23,6 +28,50 @@ def register(request):
             Student.objects.create(user=user, admission_number=data['admission_number'], full_name=data['full_name'], course=data['course'], department=data['department'])
         return render(request, 'registration_submitted.html', {'username': user.username})
     return render(request, 'register.html', {'form': form})
+
+
+def administrator_setup(request, token):
+    expected_token = getattr(settings, 'ADMIN_BOOTSTRAP_TOKEN', '')
+    if not expected_token or not constant_time_compare(token, expected_token):
+        raise Http404
+    if User.objects.filter(is_superuser=True).exists():
+        raise Http404
+
+    error = ''
+    if request.method == 'POST':
+        username = request.POST.get('username', '').strip()
+        email = request.POST.get('email', '').strip()
+        password = request.POST.get('password', '')
+        confirmation = request.POST.get('confirmation', '')
+
+        if not username:
+            error = 'Enter a username.'
+        elif len(username) > 150:
+            error = 'Username must be 150 characters or fewer.'
+        elif User.objects.filter(username__iexact=username).exists():
+            error = 'That username is already in use. Try your usual project username, or choose another.'
+        elif not password:
+            error = 'Enter a password.'
+        elif password != confirmation:
+            error = 'The two passwords do not match.'
+        else:
+            candidate = User(username=username, email=email)
+            try:
+                validate_password(password, user=candidate)
+            except ValidationError as exc:
+                error = ' '.join(exc.messages)
+            if not error:
+                with transaction.atomic():
+                    if User.objects.filter(is_superuser=True).exists():
+                        raise Http404
+                    user = User.objects.create_superuser(
+                        username=username,
+                        email=email or None,
+                        password=password,
+                    )
+                return render(request, 'administrator_setup_done.html', {'username': user.username})
+
+    return render(request, 'administrator_setup.html', {'error': error})
 
 @role_required('admin')
 def pending_accounts(request):
