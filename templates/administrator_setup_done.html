@@ -1,0 +1,20 @@
+{% load static %}
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#123b3a">
+  <title>Administrator created · Academic Assessment Assurance</title>
+  <link rel="stylesheet" href="{% static 'css/base.css' %}">
+</head>
+<body class="login">
+  <section class="login-card">
+    <p class="eyebrow">Setup complete</p>
+    <h1>Administrator<span>Ready</span></h1>
+    <p>The administrator account <strong>{{ username }}</strong> has been created successfully.</p>
+    <p><a class="button" href="{% url 'login' %}">Continue to sign in</a></p>
+    <small>For security, the temporary setup link will be disabled after the setup secret is removed.</small>
+  </section>
+</body>
+</html>
