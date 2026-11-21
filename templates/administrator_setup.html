@@ -1,0 +1,28 @@
+{% load static %}
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#123b3a">
+  <title>First administrator setup · Academic Assessment Assurance</title>
+  <link rel="stylesheet" href="{% static 'css/base.css' %}">
+</head>
+<body class="login">
+  <section class="login-card">
+    <p class="eyebrow">Secure account initialization</p>
+    <h1>Administrator<span>Setup</span></h1>
+    <p>Create the first administrator account for this online installation.</p>
+    {% if error %}<p role="alert">{{ error }}</p>{% endif %}
+    <form method="post" autocomplete="on">
+      {% csrf_token %}
+      <p><label for="username">Username</label><input id="username" name="username" type="text" maxlength="150" autocomplete="username" required></p>
+      <p><label for="email">Email address</label><input id="email" name="email" type="email" autocomplete="email"></p>
+      <p><label for="password">New password</label><input id="password" name="password" type="password" autocomplete="new-password" required></p>
+      <p><label for="confirmation">Confirm password</label><input id="confirmation" name="confirmation" type="password" autocomplete="new-password" required></p>
+      <button class="button" type="submit">Create administrator account</button>
+    </form>
+    <small>Use a strong, unique password. This page is available only during first-time setup.</small>
+  </section>
+</body>
+</html>
