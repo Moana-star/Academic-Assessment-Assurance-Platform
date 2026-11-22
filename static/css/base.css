@@ -107,3 +107,16 @@ video { width: 100%; background: var(--plum); border-radius: 8px; min-height: 22
   header { margin-bottom: 34px; }
   .brand { font-size: 21px; }
 }
+
+
+.setup-panel { margin: 0 0 24px; border-left: 4px solid var(--gold); }
+.setup-actions, .camera-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; }
+.setup-actions .button { margin: 0; }
+.demo-notice { border-left-color: var(--gold); background: var(--gold-soft); color: var(--ink); }
+.camera-panel { display: grid; gap: 12px; margin: 18px 0; }
+.camera-panel video { max-width: 560px; min-height: 220px; object-fit: cover; }
+.camera-actions span { color: var(--muted); font-size: 13px; }
+.review-card { margin-bottom: 18px; }
+.review-card h2 { margin: 4px 0; }
+.review-form { max-width: 720px; border-top: 1px solid var(--line); padding-top: 12px; }
+.review-form textarea { resize: vertical; }
