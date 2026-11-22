@@ -94,3 +94,13 @@ class IntegrityCoreTests(TestCase):
         from django.core.management.base import CommandError
         with self.assertRaises(CommandError):
             call_command('seed_demo_data')
+
+    def test_demo_seed_is_synthetic_and_idempotent(self):
+        from django.core.management import call_command
+        call_command('seed_demo_data', confirm=True)
+        self.assertEqual(Student.objects.filter(admission_number__startswith='DEMO-').count(), 5)
+        self.assertEqual(Examination.objects.filter(code__startswith='DEMO-').count(), 3)
+        self.assertFalse(Attendance.objects.filter(verification_method='DEMO_SAMPLE', attendance_status=Attendance.Status.PRESENT).exists())
+        self.assertFalse(BiometricProfile.objects.filter(student__admission_number__startswith='DEMO-').exists())
+        call_command('seed_demo_data', confirm=True)
+        self.assertEqual(Student.objects.filter(admission_number__startswith='DEMO-').count(), 5)
