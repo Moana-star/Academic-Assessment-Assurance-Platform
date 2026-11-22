@@ -309,3 +309,34 @@ video { width: 100%; background: var(--plum); border-radius: 8px; min-height: 22
     outline-offset: 3px;
   }
 }
+
+
+/* Mobile menu contrast: readable links on the white dropdown panel */
+@media (max-width: 800px) {
+  aside nav#mobile-navigation {
+    background: #FFFFFF;
+    border: 1px solid #D8C7D1;
+  }
+  aside nav#mobile-navigation a {
+    color: #30232D !important;
+    background: #FFF9F5;
+    border: 1px solid #E9DDE1;
+    font-weight: 600;
+  }
+  aside nav#mobile-navigation a:hover,
+  aside nav#mobile-navigation a:focus-visible,
+  aside nav#mobile-navigation a[aria-current='page'] {
+    color: #FFFFFF !important;
+    background: #6D3B5D !important;
+    border-color: #6D3B5D;
+  }
+  aside nav#mobile-navigation a[aria-current='page'] {
+    box-shadow: inset 4px 0 0 #C6A15B;
+  }
+  aside .user a {
+    color: #6D3B5D !important;
+    font-weight: 700;
+    text-decoration: underline;
+    text-underline-offset: 3px;
+  }
+}
