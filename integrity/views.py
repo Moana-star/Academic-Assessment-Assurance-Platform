@@ -309,11 +309,19 @@ def incident_create(request):
         messages.info(request, f'{decision.rule_id}: {decision.primary_action} No incident case was opened.')
         return redirect('incident_queue')
 
+    assigned_user = request.user
+    if request.user.role == 'admin' and not request.user.is_superuser:
+        assigned_profile = examination.invigilators.select_related('user').first()
+        if assigned_profile is None:
+            messages.error(request, 'Assign an invigilator to this examination before opening a verification case.')
+            return redirect('incident_queue')
+        assigned_user = assigned_profile.user
+
     case = IncidentCase.objects.create(
         student=student,
         examination=examination,
         created_by=request.user,
-        assigned_invigilator=request.user,
+        assigned_invigilator=assigned_user,
         rule_id=decision.rule_id,
         approved_exception=inputs.approved_exception,
         signal_anomaly=inputs.signal_anomaly,
@@ -332,6 +340,7 @@ def incident_create(request):
 
 
 @role_required('admin', 'invigilator', 'board')
+@transaction.atomic
 def incident_detail(request, case_id):
     case = get_object_or_404(
         IncidentCase.objects.select_related('student', 'examination', 'assigned_invigilator', 'created_by', 'board_reviewer').prefetch_related('events__actor'),
