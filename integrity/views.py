@@ -115,15 +115,38 @@ def examination_add(request):
 
 @role_required('admin','student')
 def enrollment(request):
-    student = getattr(request.user, 'student_profile', None)
-    if request.method == 'POST' and student:
-        profile, _ = BiometricProfile.objects.get_or_create(student=student); reference, fp = enroll_fingerprint(student); profile.fingerprint_reference = reference
-        try: face_bytes = base64.b64decode(request.POST.get('face_data','').split(',',1)[-1])
-        except Exception: face_bytes = b''
+    own_student = getattr(request.user, 'student_profile', None)
+    selected_student = own_student
+    if request.user.role == 'admin' and request.method == 'POST':
+        selected_student = get_object_or_404(Student, pk=request.POST.get('student_id'))
+    if request.method == 'POST' and selected_student:
+        profile, _ = BiometricProfile.objects.get_or_create(student=selected_student)
+        reference, fp = enroll_fingerprint(selected_student)
+        profile.fingerprint_reference = reference
+        data_url = request.POST.get('face_data', '')
+        try:
+            header, encoded = data_url.split(',', 1)
+            if header != 'data:image/jpeg;base64' or len(encoded) > 5 * 1024 * 1024:
+                raise ValueError('Unsupported or oversized image.')
+            face_bytes = base64.b64decode(encoded, validate=True)
+        except (ValueError, TypeError):
+            face_bytes = b''
         template, face = enroll_face(face_bytes)
-        if template: profile.facial_template = template
-        profile.enrollment_status = 'enrolled' if template else 'fingerprint_only'; profile.enrollment_date = timezone.now(); profile.save(); messages.success(request, f'Enrollment saved. {fp.message} {face.message}')
-    return render(request, 'biometrics/enrollment.html', {'student': student, 'profile': getattr(student, 'biometric_profile', None)})
+        if template:
+            profile.facial_template = template
+        profile.enrollment_status = 'enrolled' if template else 'fingerprint_only'
+        profile.enrollment_date = timezone.now()
+        profile.save()
+        AuditLog.objects.create(user=request.user, action='biometric_enrollment', description=f'Biometric prototype enrollment updated for {selected_student.admission_number}.')
+        messages.success(request, f'Enrollment saved for {selected_student.full_name}. {fp.message} {face.message}')
+        return redirect('enrollment')
+    context = {
+        'student': own_student,
+        'selected_student': selected_student,
+        'profile': getattr(selected_student, 'biometric_profile', None) if selected_student else None,
+        'students': Student.objects.order_by('full_name') if request.user.role == 'admin' else [],
+    }
+    return render(request, 'biometrics/enrollment.html', context)
 
 @role_required('admin','invigilator')
 def verification(request):
