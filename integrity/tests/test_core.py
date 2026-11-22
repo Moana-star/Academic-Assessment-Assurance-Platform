@@ -1,7 +1,7 @@
 from datetime import date, time
 from django.contrib.auth import get_user_model
 from django.test import TestCase
-from integrity.models import Attendance, Examination, Student
+from integrity.models import Attendance, BiometricProfile, Examination, ManualReview, Student, VerificationLog
 from integrity.services.verification_service import combine
 from integrity.services.attendance_service import record
 
@@ -45,3 +45,51 @@ class IntegrityCoreTests(TestCase):
         self.assertRedirects(response, '/accounts/pending/')
         pending.refresh_from_db()
         self.assertTrue(pending.is_active)
+
+    def test_dashboard_requires_authentication(self):
+        response = self.client.get('/')
+        self.assertRedirects(response, '/login/?next=/')
+
+    def test_admin_dashboard_counts_saved_records(self):
+        admin = get_user_model().objects.create_user(username='admin-dashboard', password='admin-pass-123', role='admin', is_staff=True)
+        self.client.force_login(admin)
+        response = self.client.get('/')
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.context['students_count'], 1)
+        self.assertEqual(response.context['exams_count'], 1)
+
+    def test_verification_inconclusive_result_creates_human_review_not_verified_attendance(self):
+        admin = get_user_model().objects.create_user(username='verification-admin', password='admin-pass-123', role='admin', is_staff=True)
+        BiometricProfile.objects.create(student=self.student, fingerprint_reference='SIMULATED-ONLY')
+        self.client.force_login(admin)
+        response = self.client.post('/biometrics/verify/', {
+            'examination': self.exam.pk,
+            'admission_number': self.student.admission_number,
+            'face_data': '',
+        })
+        self.assertRedirects(response, '/biometrics/verify/')
+        self.assertEqual(VerificationLog.objects.get().overall_result, 'manual_review')
+        self.assertEqual(ManualReview.objects.filter(decision='pending').count(), 1)
+        self.assertFalse(Attendance.objects.filter(attendance_status=Attendance.Status.PRESENT).exists())
+
+    def test_human_review_clearance_is_audited_and_records_manual_attendance(self):
+        admin = get_user_model().objects.create_user(username='review-admin', password='admin-pass-123', role='admin', is_staff=True)
+        review = ManualReview.objects.create(student=self.student, examination=self.exam, reason='Test review')
+        self.client.force_login(admin)
+        response = self.client.post('/reviews/', {
+            'review_id': review.pk,
+            'decision': 'cleared',
+            'notes': 'Identity checked against the approved institutional record.',
+        })
+        self.assertRedirects(response, '/reviews/')
+        review.refresh_from_db()
+        self.assertEqual(review.decision, 'cleared')
+        attendance = Attendance.objects.get(student=self.student, examination=self.exam)
+        self.assertEqual(attendance.verification_method, 'manual_review_approved')
+        self.assertTrue(__import__('integrity.models', fromlist=['AuditLog']).AuditLog.objects.filter(action='manual_review_completed').exists())
+
+    def test_demo_seed_command_requires_explicit_confirmation(self):
+        from django.core.management import call_command
+        from django.core.management.base import CommandError
+        with self.assertRaises(CommandError):
+            call_command('seed_demo_data')
