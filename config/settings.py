@@ -45,6 +45,7 @@ MIDDLEWARE = [
     "django.contrib.auth.middleware.AuthenticationMiddleware",
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
+    "config.middleware.PrivatePageNoCacheMiddleware",
 ]
 
 ROOT_URLCONF = "config.urls"
@@ -78,8 +79,7 @@ if DATABASE_URL:
             ssl_require=True,
         )
     }
-    # Supabase transaction poolers do not support server-side cursors or
-    # prepared statements. Keep Django/psycopg compatible with that mode.
+    # Neon poolers do not support server-side cursors or prepared statements.
     DATABASES["default"].setdefault("OPTIONS", {})["prepare_threshold"] = None
     DISABLE_SERVER_SIDE_CURSORS = True
 else:
