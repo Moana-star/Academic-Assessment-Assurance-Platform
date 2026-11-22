@@ -172,6 +172,33 @@ def verification(request):
     return render(request, 'biometrics/verification.html', {'examinations': examinations, 'students': students})
 
 @role_required('admin','invigilator')
+def review_queue(request):
+    if request.method == 'POST':
+        review = get_object_or_404(ManualReview.objects.select_related('student', 'examination'), pk=request.POST.get('review_id'), decision='pending')
+        decision = request.POST.get('decision')
+        notes = request.POST.get('notes', '').strip()
+        if decision not in ('cleared', 'not_cleared') or not notes:
+            messages.error(request, 'Choose a decision and provide review notes before saving.')
+            return redirect('review_queue')
+        review.decision = decision
+        review.notes = notes
+        review.invigilator = getattr(request.user, 'invigilator_profile', None)
+        review.save(update_fields=['decision', 'notes', 'invigilator'])
+        if decision == 'cleared':
+            from .services.attendance_service import record
+            record(review.student, review.examination, status=Attendance.Status.PRESENT, method='manual_review_approved')
+        AuditLog.objects.create(
+            user=request.user,
+            action='manual_review_completed',
+            description=f"Manual review {decision} for {review.student.admission_number} in {review.examination.code}. Notes: {notes}",
+        )
+        messages.success(request, 'Human review decision saved and added to the audit trail.')
+        return redirect('review_queue')
+    reviews = ManualReview.objects.filter(decision='pending').select_related('student', 'examination').order_by('timestamp')
+    return render(request, 'biometrics/review_queue.html', {'reviews': reviews})
+
+
+@role_required('admin','invigilator')
 def attendance(request): return render(request, 'attendance/attendance_list.html', {'records': Attendance.objects.select_related('student','examination').order_by('-verification_timestamp')})
 
 @role_required('admin','invigilator')
