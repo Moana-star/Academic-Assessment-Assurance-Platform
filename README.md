@@ -38,7 +38,7 @@ Biometric and operational signals are decision-support cues, not proof of miscon
 
 ## Prototype boundaries
 
-The repository does not yet include a production SIS connector, room-sensor gateway, BLE/Wi-Fi ingestion, posture analytics, certified biometric recognition, or an externally immutable audit store. These are documented integration targets, not completed features. Do not represent them as deployed capabilities.
+The repository does not yet include a production SIS connector, room-sensor gateway, BLE/Wi-Fi ingestion, posture analytics, real-time alert delivery, certified biometric recognition, or an externally immutable audit store. Incident indicators are currently entered by authorized staff; the new audit history is append-only at the application layer, not a tamper-proof external ledger. These are documented integration targets, not completed features. Do not represent them as deployed capabilities.
 
 ## Safety and privacy
 
