@@ -1,7 +1,11 @@
 """Deterministic, human-centred anomaly triage policy for AIEMS.
 
-This classifies corroborated operational signals. It does not identify students,
-infer intent, establish misconduct, or issue disciplinary decisions.
+This classifies operational cues. It does not identify students, infer intent,
+establish misconduct, or issue disciplinary decisions.
+
+The supplied decision-table image shows identical C2-C4 symbols for R3 and R4
+but different outputs. Until the owner clarifies that source conflict, partial
+combinations are deliberately not assigned either rule ID.
 """
 from dataclasses import dataclass
 from enum import StrEnum
@@ -32,45 +36,44 @@ class Decision:
 
 
 def evaluate(inputs: AnomalyInputs) -> Decision:
-    """Apply the diagram's deterministic decision table in safe precedence order."""
+    """Apply unambiguous precedence and conservative handling of partial cues."""
     if inputs.approved_exception:
         return Decision(
             rule_id="R1", priority=Priority.SUPPRESSED,
-            primary_action="Suppress automated alert; retain an exception audit log.",
-            invigilator_guidance="Confirm the approved accommodation/exception record; do not treat it as an anomaly.",
+            primary_action="Suppress alert; log the approved accommodation.",
+            invigilator_guidance="No invigilator notification or intervention. Proceed normally.",
             requires_human_review=False,
         )
 
     if inputs.signal_anomaly and not inputs.behavioral_cue and not inputs.persistence_or_corroboration:
         return Decision(
             rule_id="R2", priority=Priority.BACKGROUND,
-            primary_action="Create a low-priority background log; do not interrupt the examination.",
-            invigilator_guidance="No immediate action. Review only if additional independent evidence appears.",
+            primary_action="Low-priority background log.",
+            invigilator_guidance="Transient noise; no immediate action.",
             requires_human_review=False,
         )
 
-    if inputs.persistence_or_corroboration and inputs.signal_anomaly and inputs.behavioral_cue:
+    if inputs.signal_anomaly and inputs.behavioral_cue and inputs.persistence_or_corroboration:
         return Decision(
             rule_id="R6", priority=Priority.HUMAN_VERIFICATION,
-            primary_action="Raise a high-priority verification cue.",
-            invigilator_guidance="Perform a discreet, proportionate physical check and document observable facts. Do not infer intent.",
+            primary_action="High-priority verification cue; open an incident draft.",
+            invigilator_guidance="Alert the senior invigilator for a discreet standardized check. Escalation requires human corroboration.",
             requires_human_review=True,
         )
 
     if inputs.behavioral_cue and inputs.persistence_or_corroboration:
         return Decision(
             rule_id="R5", priority=Priority.HUMAN_VERIFICATION,
-            primary_action="Raise a high-priority verification cue.",
-            invigilator_guidance="Request discreet human verification; record context and allow the student to respond.",
+            primary_action="High-priority verification cue.",
+            invigilator_guidance="Alert the senior invigilator discreetly; verify and document observable facts before escalation.",
             requires_human_review=True,
         )
 
     if inputs.signal_anomaly or inputs.behavioral_cue or inputs.persistence_or_corroboration:
-        rule = "R3" if inputs.signal_anomaly and inputs.behavioral_cue else "R4"
         return Decision(
-            rule_id=rule, priority=Priority.BACKGROUND,
-            primary_action="Record a low-priority background cue for contextual review.",
-            invigilator_guidance="Do not interrupt or accuse. Wait for independent corroboration or follow normal supervision.",
+            rule_id="PARTIAL_UNRESOLVED", priority=Priority.BACKGROUND,
+            primary_action="Retain a low-priority background record pending clarification of R3/R4 source conditions.",
+            invigilator_guidance="Do not interrupt or accuse. Follow normal supervision and seek independent corroboration.",
             requires_human_review=False,
         )
 
