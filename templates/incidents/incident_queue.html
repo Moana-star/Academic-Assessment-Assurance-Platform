@@ -1,0 +1,25 @@
+{% extends 'base.html' %}
+{% block content %}
+<div class="page-head"><div><p class="eyebrow">Human-centred anomaly triage</p><h1>Incident cues</h1><p>Only high-priority patterns open a verification case. A cue is not a misconduct finding.</p></div></div>
+<section class="panel">
+<h2>Evaluate an examination observation</h2>
+<p>Enter only observed, relevant indicators. Do not infer intent. Approved exceptions take precedence.</p>
+<form method="post" action="{% url 'incident_create' %}">
+{% csrf_token %}
+<p><label for="student">Student</label><select id="student" name="student_id" required><option value="">Choose student</option>{% for student in students %}<option value="{{ student.pk }}">{{ student.admission_number }} — {{ student.full_name }}</option>{% endfor %}</select></p>
+<p><label for="exam">Active examination</label><select id="exam" name="examination_id" required><option value="">Choose examination</option>{% for exam in examinations %}<option value="{{ exam.pk }}">{{ exam.code }} — {{ exam.title }}</option>{% endfor %}</select></p>
+<div class="review-form">
+<label><input type="checkbox" name="approved_exception"> C1 — Approved exception / accommodation is recorded</label>
+<label><input type="checkbox" name="signal_anomaly"> C2 — Aggregated BLE/Wi-Fi signal anomaly</label>
+<label><input type="checkbox" name="behavioral_cue"> C3 — Observable behavioral cue</label>
+<label><input type="checkbox" name="persistence_or_corroboration"> C4 — Persistence / independent corroboration</label>
+</div>
+<p class="eyebrow">Decision policy R1–R6</p>
+<p>The server evaluates the rule. Browser-supplied priority or rule IDs are never accepted. R3/R4 identical condition rows and R5 pictograms remain background-only pending clarification of the source table.</p>
+<button class="button" type="submit">Evaluate and record cue</button>
+</form>
+</section>
+<section class="panel"><div class="panel-head"><h2>Open and recent cases</h2><span class="pill">{{ cases|length }} records</span></div>
+{% for case in cases %}<article class="review-card"><p class="eyebrow">{{ case.rule_id }} · {{ case.get_status_display }}</p><h3><a href="{% url 'incident_detail' case.pk %}">{{ case.student.full_name }} — {{ case.examination.code }}</a></h3><p>{{ case.primary_action }}</p><small>Created {{ case.created_at|date:"d M Y, H:i" }} · Assigned to {{ case.assigned_invigilator.username }}</small></article>{% empty %}<p>No incident verification cases have been opened.</p>{% endfor %}
+</section>
+{% endblock %}

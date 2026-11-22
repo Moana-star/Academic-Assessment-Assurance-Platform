@@ -13,10 +13,12 @@ from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import timezone
 from django.utils.crypto import constant_time_compare
 from .forms import ExaminationForm, RegistrationForm, StudentForm
-from .models import Attendance, AuditLog, BiometricProfile, Examination, ManualReview, Student, VerificationLog
+from .models import Attendance, AuditLog, BiometricProfile, Examination, IncidentAuditEvent, IncidentCase, ManualReview, Student, VerificationLog
 from .permissions import role_required
 from .services.fingerprint_service import enroll as enroll_fingerprint
 from .services.face_service import enroll as enroll_face
+from .services.anomaly_decision import AnomalyInputs, evaluate as evaluate_anomaly
+from .services.human_verification import CaseStatus, WorkflowError, transition_case
 
 User = get_user_model()
 
@@ -259,3 +261,180 @@ def reports(request):
         'recent_activity': AuditLog.objects.select_related('user').order_by('-timestamp')[:10],
     }
     return render(request, 'reports/reports_dashboard.html', context)
+
+
+
+@role_required('admin', 'invigilator')
+def incident_queue(request):
+    cases = IncidentCase.objects.select_related(
+        'student', 'examination', 'assigned_invigilator', 'created_by'
+    ).prefetch_related('events')
+    if request.user.role == 'invigilator' and not request.user.is_superuser:
+        cases = cases.filter(assigned_invigilator=request.user)
+    return render(request, 'incidents/incident_queue.html', {
+        'cases': cases,
+        'students': Student.objects.order_by('full_name'),
+        'examinations': Examination.objects.filter(status=Examination.Status.ACTIVE).order_by('examination_date', 'start_time'),
+    })
+
+
+@role_required('admin', 'invigilator')
+@require_POST
+def incident_create(request):
+    student = get_object_or_404(Student, pk=request.POST.get('student_id'))
+    examination = get_object_or_404(
+        Examination.objects.filter(status=Examination.Status.ACTIVE),
+        pk=request.POST.get('examination_id'),
+    )
+    if request.user.role == 'invigilator' and not request.user.is_superuser:
+        if not examination.invigilators.filter(pk=getattr(request.user, 'invigilator_profile', None).pk if hasattr(request.user, 'invigilator_profile') else -1).exists():
+            raise Http404
+
+    def checked(name):
+        return request.POST.get(name) == 'on'
+
+    inputs = AnomalyInputs(
+        approved_exception=checked('approved_exception'),
+        signal_anomaly=checked('signal_anomaly'),
+        behavioral_cue=checked('behavioral_cue'),
+        persistence_or_corroboration=checked('persistence_or_corroboration'),
+    )
+    decision = evaluate_anomaly(inputs)
+    if decision.rule_id in ('R0', 'PARTIAL_UNRESOLVED') or not decision.requires_human_review:
+        AuditLog.objects.create(
+            user=request.user,
+            action='anomaly_background_recorded',
+            description=f'{decision.rule_id}: {decision.primary_action} Student {student.admission_number}; examination {examination.code}.',
+        )
+        messages.info(request, f'{decision.rule_id}: {decision.primary_action} No incident case was opened.')
+        return redirect('incident_queue')
+
+    assigned_user = request.user
+    if request.user.role == 'admin':
+        assigned_profile = examination.invigilators.select_related('user').first()
+        if assigned_profile is None:
+            messages.error(request, 'Assign an invigilator to this examination before opening a verification case.')
+            return redirect('incident_queue')
+        assigned_user = assigned_profile.user
+
+    case = IncidentCase.objects.create(
+        student=student,
+        examination=examination,
+        created_by=request.user,
+        assigned_invigilator=assigned_user,
+        rule_id=decision.rule_id,
+        approved_exception=inputs.approved_exception,
+        signal_anomaly=inputs.signal_anomaly,
+        behavioral_cue=inputs.behavioral_cue,
+        persistence_or_corroboration=inputs.persistence_or_corroboration,
+        priority=decision.priority.value,
+        primary_action=decision.primary_action,
+        guidance=decision.invigilator_guidance,
+    )
+    IncidentAuditEvent.objects.create(
+        case=case, actor=request.user, action='alert_created',
+        details=f'{decision.rule_id} alert created. {decision.primary_action} {decision.invigilator_guidance}',
+    )
+    messages.warning(request, f'{decision.rule_id} verification cue opened. It is not a finding of misconduct.')
+    return redirect('incident_detail', case_id=case.pk)
+
+
+@role_required('admin', 'invigilator', 'board')
+@transaction.atomic
+def incident_detail(request, case_id):
+    case = get_object_or_404(
+        IncidentCase.objects.select_related('student', 'examination', 'assigned_invigilator', 'created_by', 'board_reviewer').prefetch_related('events__actor'),
+        pk=case_id,
+    )
+    if request.user.role == 'invigilator' and not request.user.is_superuser and case.assigned_invigilator_id != request.user.pk:
+        raise Http404
+    if request.user.role == 'board' and case.status not in (IncidentCase.Status.SUBMITTED, IncidentCase.Status.BOARD_REVIEWED):
+        raise Http404
+
+    if request.method == 'POST':
+        action = request.POST.get('action', '')
+        notes = request.POST.get('notes', '').strip()
+        if request.user.role == 'board' or (request.user.is_superuser and action == 'board_review'):
+            if action != 'board_review' or case.status != IncidentCase.Status.SUBMITTED:
+                raise Http404
+            outcome = request.POST.get('board_outcome', '')
+            if outcome not in IncidentCase.BoardOutcome.values or not notes:
+                messages.error(request, 'Select a board outcome and record the reasons for it.')
+                return redirect('incident_detail', case_id=case.pk)
+            case.status = IncidentCase.Status.BOARD_REVIEWED
+            case.board_outcome = outcome
+            case.board_notes = notes
+            case.board_reviewer = request.user
+            case.save(update_fields=['status', 'board_outcome', 'board_notes', 'board_reviewer', 'updated_at'])
+            IncidentAuditEvent.objects.create(
+                case=case, actor=request.user, action='board_outcome_recorded',
+                details=f'Outcome: {case.get_board_outcome_display()}. Reasons: {notes}',
+            )
+            messages.success(request, 'Board outcome recorded in the case audit history.')
+            return redirect('incident_detail', case_id=case.pk)
+
+        if request.user.role not in ('admin', 'invigilator') and not request.user.is_superuser:
+            raise Http404
+        if action == 'begin_check':
+            try:
+                transition = transition_case(case.status, action)
+            except WorkflowError as exc:
+                messages.error(request, str(exc))
+                return redirect('incident_detail', case_id=case.pk)
+            case.status = transition.status.value
+            case.save(update_fields=['status', 'updated_at'])
+            event_details = 'Senior invigilator acknowledged the discreet verification task.'
+        elif action == 'benign':
+            try:
+                transition = transition_case(case.status, action, notes=notes)
+            except WorkflowError as exc:
+                messages.error(request, str(exc))
+                return redirect('incident_detail', case_id=case.pk)
+            case.status = transition.status.value
+            case.observation_notes = notes
+            case.save(update_fields=['status', 'observation_notes', 'updated_at'])
+            event_details = f'Closed as benign after human check. {notes}'
+        elif action == 'evidence':
+            student_response = request.POST.get('student_response', '').strip()
+            report = request.POST.get('formal_report', '').strip()
+            if not student_response or not report:
+                messages.error(request, 'Record the student response and formal report draft before creating the case file.')
+                return redirect('incident_detail', case_id=case.pk)
+            try:
+                transition = transition_case(case.status, action, notes=notes)
+            except WorkflowError as exc:
+                messages.error(request, str(exc))
+                return redirect('incident_detail', case_id=case.pk)
+            case.status = transition.status.value
+            case.observation_notes = notes
+            case.student_response = student_response
+            case.formal_report = report
+            case.save(update_fields=['status', 'observation_notes', 'student_response', 'formal_report', 'updated_at'])
+            event_details = f'Formal report draft created. Observations: {notes} Student response: {student_response}'
+        elif action == 'submit':
+            try:
+                transition = transition_case(case.status, action, notes=notes)
+            except WorkflowError as exc:
+                messages.error(request, str(exc))
+                return redirect('incident_detail', case_id=case.pk)
+            case.status = transition.status.value
+            case.save(update_fields=['status', 'updated_at'])
+            event_details = f'Formal case file submitted for authorized board review. {notes}'
+        else:
+            raise Http404
+        IncidentAuditEvent.objects.create(
+            case=case, actor=request.user, action=transition.audit_action,
+            details=event_details,
+        )
+        messages.success(request, 'Case workflow updated and an audit event appended.')
+        return redirect('incident_detail', case_id=case.pk)
+
+    return render(request, 'incidents/incident_detail.html', {'case': case, 'events': case.events.all()})
+
+
+@role_required('board')
+def board_case_queue(request):
+    cases = IncidentCase.objects.filter(
+        status__in=[IncidentCase.Status.SUBMITTED, IncidentCase.Status.BOARD_REVIEWED]
+    ).select_related('student', 'examination', 'assigned_invigilator', 'board_reviewer')
+    return render(request, 'incidents/board_queue.html', {'cases': cases})

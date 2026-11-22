@@ -23,3 +23,7 @@
 ## Biometric design cautions
 
 Face detection is not identity recognition. Select and evaluate a recognition model before claiming face matching is implemented. Simulated fingerprint checks must be clearly identified as simulation. Do not store raw biometric material unnecessarily; protect templates, restrict access, define deletion/retention, and provide an accessible manual route.
+
+## Diagram-aligned anomaly triage
+
+The context boundary, external actors, decision rules, R6 workflow, functional/non-functional requirements, and governance controls are documented in [AIEMS Diagram Specification](AIEMS_DIAGRAM_SPECIFICATION.md). The deterministic server-side policy is implemented in integrity/services/anomaly_decision.py and covered by integrity/tests/test_anomaly_decision.py. It treats signals as triage cues only: approved exceptions suppress escalation, partial cues remain background-only, and persistent corroborated cues request human verification. No automated rule issues a disciplinary outcome.
