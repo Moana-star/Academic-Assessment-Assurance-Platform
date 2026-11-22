@@ -61,14 +61,6 @@ def evaluate(inputs: AnomalyInputs) -> Decision:
             requires_human_review=True,
         )
 
-    if inputs.behavioral_cue and inputs.persistence_or_corroboration:
-        return Decision(
-            rule_id="R5", priority=Priority.HUMAN_VERIFICATION,
-            primary_action="High-priority verification cue.",
-            invigilator_guidance="Alert the senior invigilator discreetly; verify and document observable facts before escalation.",
-            requires_human_review=True,
-        )
-
     if inputs.signal_anomaly or inputs.behavioral_cue or inputs.persistence_or_corroboration:
         return Decision(
             rule_id="PARTIAL_UNRESOLVED", priority=Priority.BACKGROUND,
