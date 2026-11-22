@@ -1,7 +1,7 @@
 from datetime import date, time
 from django.contrib.auth import get_user_model
 from django.test import TestCase
-from integrity.models import Attendance, BiometricProfile, Examination, ManualReview, Student, VerificationLog
+from integrity.models import Attendance, AuditLog, BiometricProfile, Examination, ManualReview, Student, VerificationLog
 from integrity.services.verification_service import combine
 from integrity.services.attendance_service import record
 
@@ -86,7 +86,7 @@ class IntegrityCoreTests(TestCase):
         self.assertEqual(review.decision, 'cleared')
         attendance = Attendance.objects.get(student=self.student, examination=self.exam)
         self.assertEqual(attendance.verification_method, 'manual_review_approved')
-        self.assertTrue(__import__('integrity.models', fromlist=['AuditLog']).AuditLog.objects.filter(action='manual_review_completed').exists())
+        self.assertTrue(AuditLog.objects.filter(action='manual_review_completed').exists())
 
     def test_demo_seed_command_requires_explicit_confirmation(self):
         from django.core.management import call_command
