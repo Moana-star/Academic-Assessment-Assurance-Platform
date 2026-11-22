@@ -1,5 +1,31 @@
-{% load static %}<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="theme-color" content="#30232D"><title>{% block title %}Academic Assessment Assurance Platform{% endblock %}</title><link rel="stylesheet" href='{% static "css/base.css" %}'></head><body><aside><a class='brand' href='{% url "dashboard" %}'>Assessment<span>Assurance</span></a><nav><a href='{% url "dashboard" %}'>Overview</a>
+{% load static %}<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="theme-color" content="#30232D"><title>{% block title %}Academic Assessment Assurance Platform{% endblock %}</title><link rel="stylesheet" href='{% static "css/base.css" %}'></head><body><aside><div class="sidebar-topbar"><a class='brand' href='{% url "dashboard" %}'>Assessment<span>Assurance</span></a><button class="menu-toggle" type="button" aria-label="Open navigation menu" aria-controls="mobile-navigation" aria-expanded="false"><span></span><span></span><span></span></button></div><nav id="mobile-navigation"><a href='{% url "dashboard" %}'>Overview</a>
 {% if user.role == 'admin' %}<a href='{% url "students" %}'>Students</a><a href='{% url "examinations" %}'>Examinations</a><a href='{% url "pending_accounts" %}'>Account approvals</a>{% endif %}
 {% if user.role == 'admin' or user.role == 'student' %}<a href='{% url "enrollment" %}'>Biometric enrollment</a>{% endif %}
 {% if user.role == 'admin' or user.role == 'invigilator' %}<a href='{% url "incident_queue" %}'>Incident cues</a><a href='{% url "verification" %}'>Verification desk</a><a href='{% url "review_queue" %}'>Manual review</a><a href='{% url "attendance" %}'>Attendance</a><a href='{% url "reports" %}'>Reports</a>{% endif %}
-{% if user.role == 'board' %}<a href='{% url "board_case_queue" %}'>Board case review</a>{% endif %}</nav><div class='user'>{{ user.get_full_name|default:user.username }}<small>{{ user.get_role_display }}</small><a href='{% url "logout" %}'>Sign out</a></div></aside><main><header><span>Academic assessment assurance</span><span class='pill'>{{ user.get_role_display }}</span></header>{% if messages %}{% for message in messages %}<div class='notice'>{{ message }}</div>{% endfor %}{% endif %}{% block content %}{% endblock %}</main></body></html>
+{% if user.role == 'board' %}<a href='{% url "board_case_queue" %}'>Board case review</a>{% endif %}</nav><div class='user'><div class="user-identity">{{ user.get_full_name|default:user.username }}<small>{{ user.get_role_display }}</small></div><a href='{% url "logout" %}'>Sign out</a></div></aside><main><header><span>Academic assessment assurance</span><span class='pill'>{{ user.get_role_display }}</span></header>{% if messages %}{% for message in messages %}<div class='notice'>{{ message }}</div>{% endfor %}{% endif %}{% block content %}{% endblock %}</main><script>
+(function () {
+  const sidebar = document.querySelector('aside');
+  const toggle = document.querySelector('.menu-toggle');
+  const navigation = document.getElementById('mobile-navigation');
+  if (!sidebar || !toggle || !navigation) return;
+  function closeMenu() {
+    sidebar.classList.remove('menu-open');
+    toggle.setAttribute('aria-expanded', 'false');
+    toggle.setAttribute('aria-label', 'Open navigation menu');
+  }
+  toggle.addEventListener('click', function () {
+    const open = sidebar.classList.toggle('menu-open');
+    toggle.setAttribute('aria-expanded', String(open));
+    toggle.setAttribute('aria-label', open ? 'Close navigation menu' : 'Open navigation menu');
+  });
+  navigation.addEventListener('click', function (event) {
+    if (event.target.closest('a')) closeMenu();
+  });
+  document.addEventListener('keydown', function (event) {
+    if (event.key === 'Escape') closeMenu();
+  });
+  window.addEventListener('resize', function () {
+    if (window.innerWidth > 800) closeMenu();
+  });
+})();
+</script></body></html>
