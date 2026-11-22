@@ -104,3 +104,20 @@ class IntegrityCoreTests(TestCase):
         self.assertFalse(BiometricProfile.objects.filter(student__admission_number__startswith='DEMO-').exists())
         call_command('seed_demo_data', confirm=True)
         self.assertEqual(Student.objects.filter(admission_number__startswith='DEMO-').count(), 5)
+
+    def test_superuser_can_load_demo_data_only_when_database_is_empty(self):
+        from django.contrib.auth import get_user_model
+        Student.objects.all().delete()
+        Examination.objects.all().delete()
+        admin = get_user_model().objects.create_superuser(username='demo-loader', email='loader@example.invalid', password='admin-pass-123')
+        self.client.force_login(admin)
+        response = self.client.post('/demo-data/load/')
+        self.assertRedirects(response, '/')
+        self.assertEqual(Student.objects.filter(admission_number__startswith='DEMO-').count(), 5)
+        self.assertEqual(Examination.objects.filter(code__startswith='DEMO-').count(), 3)
+
+    def test_non_superuser_admin_cannot_load_demo_data(self):
+        admin = get_user_model().objects.create_user(username='limited-admin', password='admin-pass-123', role='admin')
+        self.client.force_login(admin)
+        response = self.client.post('/demo-data/load/')
+        self.assertEqual(response.status_code, 404)
