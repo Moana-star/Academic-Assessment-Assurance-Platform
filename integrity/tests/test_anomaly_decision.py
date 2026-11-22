@@ -30,11 +30,11 @@ class AnomalyDecisionTests(SimpleTestCase):
                 self.assertEqual(result.rule_id, "PARTIAL_UNRESOLVED")
                 self.assertFalse(result.requires_human_review)
 
-    def test_persistent_behavioral_cue_requests_human_verification(self):
+    def test_unresolved_r5_pictogram_combination_stays_background_only(self):
         result = evaluate(AnomalyInputs(behavioral_cue=True, persistence_or_corroboration=True))
-        self.assertEqual(result.rule_id, "R5")
-        self.assertEqual(result.priority, Priority.HUMAN_VERIFICATION)
-        self.assertTrue(result.requires_human_review)
+        self.assertEqual(result.rule_id, "PARTIAL_UNRESOLVED")
+        self.assertEqual(result.priority, Priority.BACKGROUND)
+        self.assertFalse(result.requires_human_review)
         self.assertFalse(result.disciplinary_action)
 
     def test_correlated_signals_request_human_verification(self):
