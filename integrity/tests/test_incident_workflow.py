@@ -132,8 +132,8 @@ class IncidentWorkflowIntegrationTests(TestCase):
         case.refresh_from_db()
         self.assertEqual(case.status, IncidentCase.Status.BOARD_REVIEWED)
         self.assertEqual(case.board_reviewer, board_user)
-        self.assertEqual(case.events.count(), 1)
-        self.assertEqual(case.events.first().action, 'board_outcome_recorded')
+        self.assertEqual(case.events.count(), 2)
+        self.assertEqual(case.events.last().action, 'board_outcome_recorded')
 
     def test_board_cannot_open_unsubmitted_case(self):
         case = self.make_r6_case()
@@ -145,7 +145,7 @@ class IncidentWorkflowIntegrationTests(TestCase):
         self.assertEqual(response.status_code, 404)
 
     def make_r6_case(self):
-        return IncidentCase.objects.create(
+        case = IncidentCase.objects.create(
             student=self.student, examination=self.exam,
             created_by=self.invigilator_user, assigned_invigilator=self.invigilator_user,
             rule_id='R6', signal_anomaly=True, behavioral_cue=True,
@@ -153,3 +153,8 @@ class IncidentWorkflowIntegrationTests(TestCase):
             primary_action='High-priority verification cue; open an incident draft.',
             guidance='Discreet standardized human check required.',
         )
+        IncidentAuditEvent.objects.create(
+            case=case, actor=self.invigilator_user,
+            action='alert_created', details='R6 alert created for integration test.',
+        )
+        return case
