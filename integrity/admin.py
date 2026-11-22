@@ -2,7 +2,14 @@ from django.contrib import admin
 from django.contrib.auth.admin import UserAdmin
 from .models import Attendance, AuditLog, BiometricProfile, Examination, ExaminationRegistration, IncidentAuditEvent, IncidentCase, Invigilator, ManualReview, Student, User, VerificationLog
 
-admin.site.register(User, UserAdmin)
+@admin.register(User)
+class PlatformUserAdmin(UserAdmin):
+    fieldsets = UserAdmin.fieldsets + (
+        ('Platform access', {'fields': ('role',)}),
+    )
+    add_fieldsets = UserAdmin.add_fieldsets + (
+        (None, {'classes': ('wide',), 'fields': ('role',)}),
+    )
 admin.site.register([Student, Invigilator, Examination, ExaminationRegistration, BiometricProfile, Attendance, VerificationLog, ManualReview, AuditLog, IncidentCase])
 
 @admin.register(IncidentAuditEvent)
