@@ -225,4 +225,14 @@ def review_queue(request):
 def attendance(request): return render(request, 'attendance/attendance_list.html', {'records': Attendance.objects.select_related('student','examination').order_by('-verification_timestamp')})
 
 @role_required('admin','invigilator')
-def reports(request): return render(request, 'reports/reports_dashboard.html', {'total': Attendance.objects.count(), 'present': Attendance.objects.filter(attendance_status='present').count(), 'reviews': ManualReview.objects.filter(decision='pending').count()})
+def reports(request):
+    context = {
+        'total': Attendance.objects.count(),
+        'present': Attendance.objects.filter(attendance_status=Attendance.Status.PRESENT).count(),
+        'manual': Attendance.objects.filter(attendance_status=Attendance.Status.MANUAL).count(),
+        'absent': Attendance.objects.filter(attendance_status=Attendance.Status.ABSENT).count(),
+        'reviews': ManualReview.objects.filter(decision='pending').count(),
+        'verification_logs': VerificationLog.objects.select_related('student', 'examination').order_by('-timestamp')[:10],
+        'recent_activity': AuditLog.objects.select_related('user').order_by('-timestamp')[:10],
+    }
+    return render(request, 'reports/reports_dashboard.html', context)
