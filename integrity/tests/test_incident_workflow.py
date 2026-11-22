@@ -113,6 +113,37 @@ class IncidentWorkflowIntegrationTests(TestCase):
         with self.assertRaises(ValueError):
             event.delete()
 
+    def test_board_can_review_only_submitted_case_and_record_outcome(self):
+        case = self.make_r6_case()
+        case.status = IncidentCase.Status.SUBMITTED
+        case.formal_report = 'Submitted report.'
+        case.student_response = 'Student response.'
+        case.save()
+        board_user = User.objects.create_user(
+            username='board-reviewer', password='test-pass-12345', role='board'
+        )
+        self.client.force_login(board_user)
+        response = self.client.post(reverse('incident_detail', args=[case.pk]), {
+            'action': 'board_review',
+            'board_outcome': IncidentCase.BoardOutcome.NO_ACTION,
+            'notes': 'Evidence did not support further action.',
+        })
+        self.assertEqual(response.status_code, 302)
+        case.refresh_from_db()
+        self.assertEqual(case.status, IncidentCase.Status.BOARD_REVIEWED)
+        self.assertEqual(case.board_reviewer, board_user)
+        self.assertEqual(case.events.count(), 1)
+        self.assertEqual(case.events.first().action, 'board_outcome_recorded')
+
+    def test_board_cannot_open_unsubmitted_case(self):
+        case = self.make_r6_case()
+        board_user = User.objects.create_user(
+            username='board-reviewer', password='test-pass-12345', role='board'
+        )
+        self.client.force_login(board_user)
+        response = self.client.get(reverse('incident_detail', args=[case.pk]))
+        self.assertEqual(response.status_code, 404)
+
     def make_r6_case(self):
         return IncidentCase.objects.create(
             student=self.student, examination=self.exam,
