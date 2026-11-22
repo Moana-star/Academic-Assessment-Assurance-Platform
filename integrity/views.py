@@ -126,7 +126,50 @@ def enrollment(request):
     return render(request, 'biometrics/enrollment.html', {'student': student, 'profile': getattr(student, 'biometric_profile', None)})
 
 @role_required('admin','invigilator')
-def verification(request): return render(request, 'biometrics/verification.html', {'examinations': Examination.objects.filter(status='active'), 'students': Student.objects.all()})
+def verification(request):
+    examinations = Examination.objects.filter(status=Examination.Status.ACTIVE).order_by('examination_date', 'start_time')
+    students = Student.objects.select_related('user').order_by('full_name')
+    if request.method == 'POST':
+        examination = get_object_or_404(examinations, pk=request.POST.get('examination'))
+        student = get_object_or_404(students, admission_number=request.POST.get('admission_number', '').strip())
+        profile = getattr(student, 'biometric_profile', None)
+        if not profile:
+            messages.error(request, 'This student has no biometric enrollment. Complete enrollment before verification.')
+            return redirect('verification')
+        data_url = request.POST.get('face_data', '')
+        try:
+            header, encoded = data_url.split(',', 1)
+            if header != 'data:image/jpeg;base64' or len(encoded) > 5 * 1024 * 1024:
+                raise ValueError('Unsupported or oversized image.')
+            face_bytes = base64.b64decode(encoded, validate=True)
+        except (ValueError, TypeError):
+            face_bytes = b''
+        from .services.verification_service import verify as verify_biometrics
+        result = verify_biometrics(profile, profile.facial_template, face_bytes=face_bytes)
+        VerificationLog.objects.create(
+            student=student,
+            examination=examination,
+            fingerprint_result=result['fingerprint_result'],
+            facial_result=result['facial_result'],
+            overall_result=result['overall_result'],
+            reviewing_invigilator=getattr(request.user, 'invigilator_profile', None),
+        )
+        if result['overall_result'] == 'verified':
+            from .services.attendance_service import record
+            record(student, examination, status=Attendance.Status.PRESENT, method='simulated_fingerprint+face_prototype')
+            AuditLog.objects.create(user=request.user, action='attendance_verified', description=f'Prototype verification passed for {student.admission_number} in {examination.code}.')
+            messages.success(request, 'Both prototype checks matched. Attendance was recorded; this is not a production biometric identity decision.')
+        else:
+            ManualReview.objects.get_or_create(
+                student=student,
+                examination=examination,
+                decision='pending',
+                defaults={'reason': f"Prototype verification requires human review. Fingerprint: {result['fingerprint_result']}; face: {result['facial_result']}."},
+            )
+            AuditLog.objects.create(user=request.user, action='verification_referred', description=f'Verification referred for human review: {student.admission_number} in {examination.code}.')
+            messages.warning(request, 'The result was not fully conclusive. It has been referred for human review; no verified attendance was recorded.')
+        return redirect('verification')
+    return render(request, 'biometrics/verification.html', {'examinations': examinations, 'students': students})
 
 @role_required('admin','invigilator')
 def attendance(request): return render(request, 'attendance/attendance_list.html', {'records': Attendance.objects.select_related('student','examination').order_by('-verification_timestamp')})
