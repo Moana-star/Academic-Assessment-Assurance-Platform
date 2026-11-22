@@ -25,7 +25,10 @@ class AnomalyDecisionTests(SimpleTestCase):
         )
         for inputs in cases:
             with self.subTest(inputs=inputs):
-                self.assertEqual(evaluate(inputs).priority, Priority.BACKGROUND)
+                result = evaluate(inputs)
+                self.assertEqual(result.priority, Priority.BACKGROUND)
+                self.assertEqual(result.rule_id, "PARTIAL_UNRESOLVED")
+                self.assertFalse(result.requires_human_review)
 
     def test_persistent_behavioral_cue_requests_human_verification(self):
         result = evaluate(AnomalyInputs(behavioral_cue=True, persistence_or_corroboration=True))
