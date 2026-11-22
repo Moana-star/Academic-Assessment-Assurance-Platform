@@ -89,7 +89,7 @@ def approve_account(request, user_id):
 
 @login_required
 def dashboard(request):
-    context = {'students_count': Student.objects.count(), 'exams_count': Examination.objects.count(), 'verified_count': Attendance.objects.filter(attendance_status='present').count(), 'reviews_count': ManualReview.objects.filter(decision='pending').count(), 'upcoming': Examination.objects.filter(examination_date__gte=timezone.localdate()).order_by('examination_date')[:5], 'recent_logs': VerificationLog.objects.select_related('student','examination').order_by('-timestamp')[:6]}
+    context = {'students_count': Student.objects.count(), 'exams_count': Examination.objects.count(), 'verified_count': Attendance.objects.filter(attendance_status='present').count(), 'reviews_count': ManualReview.objects.filter(decision='pending').count(), 'upcoming': Examination.objects.filter(examination_date__gte=timezone.localdate()).order_by('examination_date')[:5], 'recent_logs': VerificationLog.objects.select_related('student','examination').order_by('-timestamp')[:6], 'demo_data_present': Student.objects.filter(user__username__startswith='demo-student-').exists()}
     if request.user.role == 'student': return render(request, 'dashboard/student_dashboard.html', context)
     if request.user.role == 'invigilator': return render(request, 'dashboard/invigilator_dashboard.html', context)
     return render(request, 'dashboard/admin_dashboard.html', context)
