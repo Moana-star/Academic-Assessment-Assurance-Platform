@@ -2,6 +2,7 @@ from django.contrib.auth.models import AbstractUser, UserManager as DjangoUserMa
 from django.core.validators import FileExtensionValidator
 from django.db import models
 
+
 class UserManager(DjangoUserManager):
     def create_superuser(self, username, email=None, password=None, **extra_fields):
         extra_fields.setdefault('is_staff', True)
@@ -13,13 +14,16 @@ class UserManager(DjangoUserManager):
         user.save(using=self._db)
         return user
 
+
 class User(AbstractUser):
     class Roles(models.TextChoices):
         ADMIN = 'admin', 'Administrator'
         INVIGILATOR = 'invigilator', 'Invigilator'
         STUDENT = 'student', 'Student'
+        BOARD = 'board', 'Disciplinary / Academic Board'
     role = models.CharField(max_length=20, choices=Roles.choices, default=Roles.STUDENT)
     objects = UserManager()
+
 
 class Student(models.Model):
     user = models.OneToOneField(User, on_delete=models.CASCADE, related_name='student_profile')
@@ -31,12 +35,14 @@ class Student(models.Model):
     registration_date = models.DateTimeField(auto_now_add=True)
     def __str__(self): return f'{self.admission_number} — {self.full_name}'
 
+
 class Invigilator(models.Model):
     user = models.OneToOneField(User, on_delete=models.CASCADE, related_name='invigilator_profile')
     staff_number = models.CharField(max_length=40, unique=True)
     full_name = models.CharField(max_length=160)
     department = models.CharField(max_length=160)
     def __str__(self): return self.full_name
+
 
 class Examination(models.Model):
     class Status(models.TextChoices):
@@ -51,12 +57,14 @@ class Examination(models.Model):
     invigilators = models.ManyToManyField(Invigilator, blank=True, related_name='examinations')
     def __str__(self): return f'{self.code} — {self.title}'
 
+
 class ExaminationRegistration(models.Model):
     student = models.ForeignKey(Student, on_delete=models.CASCADE, related_name='exam_registrations')
     examination = models.ForeignKey(Examination, on_delete=models.CASCADE, related_name='registrations')
     registration_date = models.DateTimeField(auto_now_add=True)
     class Meta:
         constraints = [models.UniqueConstraint(fields=['student','examination'], name='unique_exam_registration')]
+
 
 class BiometricProfile(models.Model):
     student = models.OneToOneField(Student, on_delete=models.CASCADE, related_name='biometric_profile')
@@ -66,6 +74,7 @@ class BiometricProfile(models.Model):
     enrollment_status = models.CharField(max_length=30, default='not_enrolled')
     enrollment_date = models.DateTimeField(null=True, blank=True)
     updated_at = models.DateTimeField(auto_now=True)
+
 
 class Attendance(models.Model):
     class Status(models.TextChoices): PRESENT='present','Present'; MANUAL='manual','Manual review'; ABSENT='absent','Absent'
@@ -77,6 +86,7 @@ class Attendance(models.Model):
     class Meta:
         constraints = [models.UniqueConstraint(fields=['student','examination'], name='unique_attendance')]
 
+
 class VerificationLog(models.Model):
     student = models.ForeignKey(Student, on_delete=models.CASCADE, related_name='verification_logs')
     examination = models.ForeignKey(Examination, on_delete=models.CASCADE, related_name='verification_logs')
@@ -86,12 +96,76 @@ class VerificationLog(models.Model):
     timestamp = models.DateTimeField(auto_now_add=True)
     reviewing_invigilator = models.ForeignKey(Invigilator, null=True, blank=True, on_delete=models.SET_NULL)
 
+
 class ManualReview(models.Model):
     student = models.ForeignKey(Student, on_delete=models.CASCADE, related_name='manual_reviews')
     examination = models.ForeignKey(Examination, on_delete=models.CASCADE, related_name='manual_reviews')
     reason = models.TextField(); invigilator = models.ForeignKey(Invigilator, null=True, blank=True, on_delete=models.SET_NULL)
     decision = models.CharField(max_length=30, default='pending'); notes = models.TextField(blank=True)
     timestamp = models.DateTimeField(auto_now_add=True)
+
+
+class IncidentCase(models.Model):
+    class Status(models.TextChoices):
+        ALERTED = 'alerted', 'Awaiting discreet check'
+        CHECK_IN_PROGRESS = 'check_in_progress', 'Discreet check in progress'
+        BENIGN_CLOSED = 'benign_closed', 'Closed as benign'
+        REPORT_DRAFT = 'report_draft', 'Formal report draft'
+        SUBMITTED = 'submitted', 'Submitted for board review'
+        BOARD_REVIEWED = 'board_reviewed', 'Board outcome recorded'
+
+    class BoardOutcome(models.TextChoices):
+        NO_ACTION = 'no_action', 'No further action'
+        REFERRED = 'referred', 'Further institutional process'
+        RETURNED = 'returned', 'Returned for more information'
+
+    student = models.ForeignKey(Student, on_delete=models.PROTECT, related_name='incident_cases')
+    examination = models.ForeignKey(Examination, on_delete=models.PROTECT, related_name='incident_cases')
+    created_by = models.ForeignKey(User, on_delete=models.PROTECT, related_name='created_incident_cases')
+    assigned_invigilator = models.ForeignKey(User, on_delete=models.PROTECT, related_name='assigned_incident_cases')
+    rule_id = models.CharField(max_length=24)
+    approved_exception = models.BooleanField(default=False)
+    signal_anomaly = models.BooleanField(default=False)
+    behavioral_cue = models.BooleanField(default=False)
+    persistence_or_corroboration = models.BooleanField(default=False)
+    priority = models.CharField(max_length=48)
+    primary_action = models.CharField(max_length=240)
+    guidance = models.TextField()
+    status = models.CharField(max_length=24, choices=Status.choices, default=Status.ALERTED)
+    observation_notes = models.TextField(blank=True)
+    student_response = models.TextField(blank=True)
+    formal_report = models.TextField(blank=True)
+    board_outcome = models.CharField(max_length=24, choices=BoardOutcome.choices, blank=True)
+    board_notes = models.TextField(blank=True)
+    board_reviewer = models.ForeignKey(User, on_delete=models.PROTECT, null=True, blank=True, related_name='reviewed_incident_cases')
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f'{self.rule_id} — {self.student.admission_number} — {self.get_status_display()}'
+
+
+class IncidentAuditEvent(models.Model):
+    case = models.ForeignKey(IncidentCase, on_delete=models.PROTECT, related_name='events')
+    actor = models.ForeignKey(User, on_delete=models.PROTECT, related_name='incident_audit_events')
+    action = models.CharField(max_length=64)
+    details = models.TextField()
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['created_at', 'pk']
+
+    def save(self, *args, **kwargs):
+        if self.pk:
+            raise ValueError('Incident audit events are append-only.')
+        return super().save(*args, **kwargs)
+
+    def delete(self, *args, **kwargs):
+        raise ValueError('Incident audit events cannot be deleted through the application.')
+
 
 class AuditLog(models.Model):
     user = models.ForeignKey(User, null=True, on_delete=models.SET_NULL)
