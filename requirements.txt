@@ -8,5 +8,5 @@ Pillow>=10.0
 opencv-python-headless>=4.10
 
 # Parse DATABASE_URL and connect to managed PostgreSQL
- dj-database-url>=2.3,<3.0
+dj-database-url>=2.3,<3.0
 psycopg[binary]>=3.2,<4.0
