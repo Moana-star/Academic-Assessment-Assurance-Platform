@@ -22,7 +22,7 @@ This repository is maintained and developed independently under the Moana-star G
 
 - **Backend:** Python and Django
 - **Frontend:** Django templates, HTML5, CSS3, and Vanilla JavaScript
-- **Database:** SQLite for local academic development
+- **Database:** SQLite for local development; managed PostgreSQL when `DATABASE_URL` is configured (deployment)
 - **Image processing:** OpenCV
 - **Version control:** Git and GitHub
 
@@ -33,6 +33,8 @@ This repository is maintained and developed independently under the Moana-star G
 - Examination scheduling and student registration
 - Biometric enrollment workflows
 - Simulated fingerprint verification in the initial prototype
+- Supervised face-capture and prototype verification flow with inconclusive outcomes routed to human review
+- Auditable human-review decisions and duplicate-safe attendance recording
 - Facial enrollment and image-processing workflow
 - Combined verification outcomes and manual review
 - Attendance records, audit history, and reports
@@ -120,3 +122,4 @@ Biometric information is highly sensitive. Before implementing enrollment, defin
 - [API contract](docs/API_CONTRACT.md)
 - [Development plan](docs/DEVELOPMENT_PLAN.md)
 - [Development guide](docs/CONTRIBUTING.md)
+- [Demonstration data setup](docs/DEMO_DATA.md)
