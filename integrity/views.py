@@ -310,7 +310,7 @@ def incident_create(request):
         return redirect('incident_queue')
 
     assigned_user = request.user
-    if request.user.role == 'admin' and not request.user.is_superuser:
+    if request.user.role == 'admin':
         assigned_profile = examination.invigilators.select_related('user').first()
         if assigned_profile is None:
             messages.error(request, 'Assign an invigilator to this examination before opening a verification case.')
