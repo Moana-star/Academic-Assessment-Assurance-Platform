@@ -1,27 +1,52 @@
-# R6 workflow implementation boundary
+# R6 Workflow Implementation Status
 
-The deterministic decision service and this transition policy are separate by design.
+## Implemented in this branch
 
-## Human-verification states
+- Persisted incident cases linked to the student, examination, creating user,
+  and assigned invigilator.
+- Server-side deterministic evaluation. The browser cannot submit its own
+  priority, rule ID, or decision.
+- R1 approved-exception precedence and R2 transient signal-only background
+  handling.
+- R6 high-priority cue creation for the explicit C1=N, C2=Y, C3=Y, C4=Y
+  combination.
+- R3/R4 identical source condition rows and R5 pictogram ambiguity are kept
+  out of automatic escalation. They remain background-only until the rule
+  owner supplies an unambiguous discriminator / Boolean mapping.
+- Role-protected incident desk and assigned-invigilator case access.
+- Explicit human transitions: alert → discreet check → benign closure OR
+  formal report draft → explicit case submission.
+- Formal report requires observations and a recorded student response.
+- Dedicated board role, submitted-case queue, and recorded board outcome.
+- Append-only audit events at the application/model/admin layer; each
+  transition is committed atomically with its audit event.
+- Integration tests for R6 creation, R2 handling, human transitions,
+  invigilator assignment, board access, and audit event protections.
 
-| Current state | Authorized action | Next state | Required record |
-|---|---|---|---|
-| Alerted | Begin discreet check | Check in progress | Workflow audit event |
-| Check in progress | Record benign outcome | Benign closed | Factual notes |
-| Check in progress | Record evidence requiring escalation | Report draft | Factual notes |
-| Report draft | Submit formal case | Submitted | Review/submission notes |
+## Boundaries that remain
 
-## Safety and governance invariants
+- Room sensors, BLE/Wi-Fi telemetry ingestion, vision/posture analytics, SIS
+  synchronization, mobile push notifications, and real-time alert delivery
+  are not integrated. The current incident desk accepts manually entered
+  indicators from authorized staff.
+- Audit events are protected against normal application/admin edits and
+  deletions, but this is not a cryptographically immutable external audit
+  ledger. Production deployment needs database-level controls, restricted
+  database roles, backups, and independent tamper monitoring.
+- Board outcomes record an application workflow decision only. They do not
+  replace institutional disciplinary procedures, legal review, appeal rights,
+  or formal records management.
+- R3/R4 and R5 require policy-owner clarification before those rows can be
+  safely automated.
+- The feature branch has not been merged or deployed to the production site.
 
-- An automated anomaly cue is not a finding of misconduct.
-- A high-priority cue requests a human check; it does not automatically create a disciplinary finding.
-- A benign outcome closes the workflow without creating a formal case.
-- A formal report is a draft until an authorized person submits it.
-- The transition policy rejects skipped steps and requires notes for consequential outcomes.
-- Production persistence, role authorization, notification delivery, board review, and append-only audit storage must be wired into Django views/models before this workflow can be called end-to-end complete.
+## Verification
 
-## Validation
+The GitHub Actions workflow runs:
+- `python manage.py check`
+- `python manage.py makemigrations --check --dry-run`
+- `python manage.py test`
 
-Run python manage.py test integrity.tests to execute the workflow and decision tests.
-
-This document intentionally distinguishes tested policy logic from full production integration.
+A successful run is required before the branch is ready for review. Do not
+apply the new migration to the production database until the PR has been
+reviewed and the deployment plan is approved.
