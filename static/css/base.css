@@ -91,23 +91,94 @@ video { width: 100%; background: var(--plum); border-radius: 8px; min-height: 22
 .login-card small { display: block; color: var(--muted); margin-top: 22px; line-height: 1.5; }
 :focus-visible { outline: 3px solid rgba(198, 161, 91, .7); outline-offset: 3px; }
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { scroll-behavior: auto !important; transition-duration: .01ms !important; animation-duration: .01ms !important; } }
+/* Responsive navigation and content layout */
 @media (max-width: 800px) {
-  aside { position: static; width: auto; min-height: auto; }
-  nav { display: flex; flex-wrap: wrap; margin-top: 25px; }
-  .user { margin-top: 20px; }
-  main { margin: 0; padding: 22px; }
-  .stats, .enroll-grid { grid-template-columns: 1fr 1fr; }
-  h1 { font-size: 38px; }
-  .page-head { align-items: start; gap: 18px; flex-direction: column; }
-  table { display: block; overflow: auto; white-space: nowrap; }
+  body { overflow-x: hidden; }
+  aside {
+    position: relative;
+    inset: auto;
+    width: 100%;
+    min-height: 0;
+    padding: 18px 18px 12px;
+    box-shadow: 0 5px 20px rgba(48, 35, 45, .10);
+  }
+  .brand { display: inline-block; font-size: 22px; }
+  .brand span { display: inline; margin: 0 0 0 7px; font-size: 10px; }
+  nav {
+    display: flex;
+    flex-wrap: nowrap;
+    gap: 6px;
+    margin: 16px -18px 0;
+    padding: 0 18px 9px;
+    overflow-x: auto;
+    overflow-y: hidden;
+    overscroll-behavior-x: contain;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: thin;
+    scroll-snap-type: x proximity;
+  }
+  nav a {
+    flex: 0 0 auto;
+    white-space: nowrap;
+    padding: 9px 12px;
+    font-size: 13px;
+    scroll-snap-align: start;
+  }
+  nav a:hover { transform: none; }
+  .user {
+    margin-top: 9px;
+    padding-top: 10px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 4px 10px;
+    font-size: 13px;
+  }
+  .user small { margin-right: auto; }
+  .user a { margin: 0 0 0 auto; padding: 6px 10px; }
+  main { margin: 0; padding: 20px 18px 42px; max-width: none; }
+  header { margin-bottom: 28px; gap: 10px; font-size: 12px; }
+  .stats, .enroll-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .page-head { align-items: flex-start; flex-direction: column; gap: 10px; margin-bottom: 22px; }
+  h1 { font-size: clamp(32px, 8vw, 40px); line-height: 1.08; }
+  h2 { font-size: 20px; }
+  .panel { padding: 18px; margin-top: 15px; }
+  .form-wrap { padding: 22px; }
+  table { display: block; width: 100%; overflow-x: auto; white-space: nowrap; -webkit-overflow-scrolling: touch; }
+  th, td { padding: 12px 10px; }
+  .button { min-height: 44px; }
+  input, select, textarea { min-height: 44px; font-size: 16px; }
+  textarea { min-height: 100px; }
+  video { min-height: 180px; }
 }
-@media (max-width: 480px) {
-  .stats { grid-template-columns: 1fr; }
+@media (max-width: 520px) {
+  aside { padding: 15px 14px 10px; }
+  .brand { font-size: 20px; }
+  nav { margin: 14px -14px 0; padding: 0 14px 8px; }
+  .user { font-size: 12px; }
+  main { padding: 17px 14px 34px; }
+  header { margin-bottom: 24px; }
+  header .pill { padding: 5px 9px; font-size: 11px; }
+  .stats { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+  .stats div { padding: 15px 13px; min-width: 0; }
+  .stats b { font-size: 28px; }
+  .stats span { font-size: 12px; line-height: 1.35; }
+  .panel { padding: 15px; border-radius: 12px; }
+  .panel-head { align-items: flex-start; flex-wrap: wrap; }
+  .form-wrap { padding: 19px 16px; }
   .login-card { padding: 28px 22px; }
-  header { margin-bottom: 34px; }
-  .brand { font-size: 21px; }
+  .login-card h1 { font-size: 38px; }
+  .setup-actions, .camera-actions { align-items: stretch; flex-direction: column; }
+  .setup-actions .button, .camera-actions .button { width: 100%; text-align: center; }
+  .review-card { padding: 14px; }
+  .scan { padding: 24px 12px; font-size: 54px; }
 }
-
+@media (max-width: 360px) {
+  .stats { grid-template-columns: 1fr; }
+  .brand span { display: block; margin: 4px 0 0; }
+  header { align-items: flex-start; flex-direction: column; }
+}
 
 .setup-panel { margin: 0 0 24px; border-left: 4px solid var(--gold); }
 .setup-actions, .camera-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; }
