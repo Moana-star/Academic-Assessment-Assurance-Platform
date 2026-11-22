@@ -75,6 +75,7 @@ class IntegrityCoreTests(TestCase):
     def test_human_review_clearance_is_audited_and_records_manual_attendance(self):
         admin = get_user_model().objects.create_user(username='review-admin', password='admin-pass-123', role='admin', is_staff=True)
         review = ManualReview.objects.create(student=self.student, examination=self.exam, reason='Test review')
+        Attendance.objects.create(student=self.student, examination=self.exam, attendance_status=Attendance.Status.MANUAL, verification_method='DEMO_SAMPLE')
         self.client.force_login(admin)
         response = self.client.post('/reviews/', {
             'review_id': review.pk,
