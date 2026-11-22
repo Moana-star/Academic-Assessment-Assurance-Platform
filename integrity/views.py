@@ -271,7 +271,11 @@ def incident_queue(request):
     ).prefetch_related('events')
     if request.user.role == 'invigilator' and not request.user.is_superuser:
         cases = cases.filter(assigned_invigilator=request.user)
-    return render(request, 'incidents/incident_queue.html', {\n        'cases': cases,\n        'students': Student.objects.order_by('full_name'),\n        'examinations': Examination.objects.filter(status=Examination.Status.ACTIVE).order_by('examination_date', 'start_time'),\n    })
+    return render(request, 'incidents/incident_queue.html', {
+        'cases': cases,
+        'students': Student.objects.order_by('full_name'),
+        'examinations': Examination.objects.filter(status=Examination.Status.ACTIVE).order_by('examination_date', 'start_time'),
+    })
 
 
 @role_required('admin', 'invigilator')
