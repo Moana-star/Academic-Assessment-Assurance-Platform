@@ -7,6 +7,6 @@ urlpatterns = [
     path('accounts/pending/', views.pending_accounts, name='pending_accounts'), path('accounts/<int:user_id>/approve/', views.approve_account, name='approve_account'),
     path('students/', views.students, name='students'), path('students/add/', views.student_add, name='student_add'),
     path('examinations/', views.examinations, name='examinations'), path('examinations/add/', views.examination_add, name='examination_add'),
-    path('biometrics/enroll/', views.enrollment, name='enrollment'), path('biometrics/verify/', views.verification, name='verification'),
+    path('biometrics/enroll/', views.enrollment, name='enrollment'), path('biometrics/verify/', views.verification, name='verification'), path('reviews/', views.review_queue, name='review_queue'),
     path('attendance/', views.attendance, name='attendance'), path('reports/', views.reports, name='reports'),
 ]
