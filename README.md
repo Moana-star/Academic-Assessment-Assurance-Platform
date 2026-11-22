@@ -34,7 +34,8 @@ Biometric and operational signals are decision-support cues, not proof of miscon
 - Prototype biometric enrollment and supervised verification
 - Attendance recording and duplicate-safe constraints
 - Manual review queue and audit history
-- Deterministic AIEMS anomaly triage policy (R1–R6), with approved-exception precedence and human verification for high-priority cues
+- Persisted incident cases, discreet invigilator verification, benign closure, formal report drafting/submission, and a dedicated board outcome workflow
+- Deterministic AIEMS triage for unambiguous R1, R2, and R6 patterns; unresolved R3/R4/R5 inputs are deliberately not escalated automatically
 
 ## Prototype boundaries
 
