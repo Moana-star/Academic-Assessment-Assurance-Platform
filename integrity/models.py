@@ -62,6 +62,7 @@ class BiometricProfile(models.Model):
     student = models.OneToOneField(Student, on_delete=models.CASCADE, related_name='biometric_profile')
     fingerprint_reference = models.CharField(max_length=128, blank=True)
     facial_template = models.TextField(blank=True)
+    facial_capture = models.ImageField(upload_to='biometric_captures/', blank=True, null=True, validators=[FileExtensionValidator(['jpg', 'jpeg', 'png'])])
     enrollment_status = models.CharField(max_length=30, default='not_enrolled')
     enrollment_date = models.DateTimeField(null=True, blank=True)
     updated_at = models.DateTimeField(auto_now=True)
