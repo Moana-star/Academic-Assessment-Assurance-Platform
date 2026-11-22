@@ -1,125 +1,138 @@
 # AIEMS Diagram-Aligned System Specification
 
-This specification translates the supplied context, decision-table, workflow,
-requirements, and ethics diagrams into repository-level design rules. It does
-not claim optional hardware integrations are already deployed.
+This specification combines the diagrams supplied in the WhatsApp video and
+the separately supplied full-resolution deterministic decision table. It
+describes the intended system; optional hardware and institutional integrations
+are not claimed as deployed.
 
-## 1. System context (Level 0)
+## 1. Level 0 system context
 
-The AI-Assisted Examination Integrity Management System (AIEMS) is the central
-application boundary.
+The central system is the **AI-Assisted Examination Integrity Management
+System (AIEMS)**.
 
 | External actor/system | Information sent to AIEMS | Information returned by AIEMS |
 |---|---|---|
-| Invigilator (mobile/tablet UI) | Observations, incident reports, verification outcomes | Alert cues, seating maps, incident-log templates |
-| Student (indirect) | Responses through the invigilator and approved accommodation process | Clear disclosure, accessible manual verification, formal appeal route |
-| Exam Administration / SIS | Exam schedules, student rosters, seating plans, accommodation data | Incident summaries, attendance verification, administrative reports |
-| Room sensors / network edge | Aggregated signal metadata (for example BLE/Wi-Fi anomaly indicators) and system telemetry | Health checks and configuration requests |
-| Disciplinary / Academic Board | Case review outcomes and governance decisions | Evidence bundles and append-only audit history |
+| Invigilator (mobile/tablet UI) | Observations, incident reports, verification outcomes | Discreet alert cues, seating/roster context, incident-log templates |
+| Student (indirect) | Responses through invigilator and approved accommodation process | Clear disclosure, accessible manual verification, formal response/appeal route |
+| Examination Administration / SIS | Examination schedules, student rosters, seating plans, approved accommodation records | Attendance verification, incident summaries, administrative reports |
+| Room Sensors & Network Edge | Aggregated BLE/Wi-Fi signal metadata, anomaly indicators, device/network telemetry | Health checks and configuration requests |
+| Disciplinary / Academic Board | Authorized review outcomes and governance decisions | Evidence bundles, case records, audit history |
 
-The application is the system of record for its own workflow, not a replacement
-for the SIS, room hardware, or the institution's disciplinary authority.
-External integrations must be authenticated, least-privilege, validated, and
-audited. Raw sensor streams and continuous biometric surveillance are outside
-the current prototype scope.
+AIEMS is the system of record for its own application workflow. It is not a
+replacement for the SIS, physical room sensors, invigilator judgment, or the
+institution's disciplinary authority. The current prototype does not claim
+live SIS, BLE/Wi-Fi, or sensor integrations.
 
-## 2. Deterministic decision table
+## 2. Deterministic invigilator-support decision table
 
-Policy inputs are Boolean, server-validated indicators:
-- approved_exception: an accommodation or exception is already approved.
-- signal_anomaly: an aggregated device/network signal is unusual.
-- behavioral_cue: an invigilator records an observable cue.
-- persistence_or_corroboration: the cue persists or has independent corroboration.
+The four inputs are C1 approved exception (for example medical), C2 signal
+anomaly (BLE/Wi-Fi), C3 behavioral cue (vision/invigilator), and C4
+persistence/corroboration. The full source transcription, including each
+row's displayed output and the R3/R4 conflict, is in
+[DECISION_TABLE.md](DECISION_TABLE.md).
 
-The policy is implemented in integrity/services/anomaly_decision.py.
-Approved exceptions have precedence. A signal-only transient is background
-logged. Isolated/partial cues remain low priority. Persistent corroborated
-combinations request human verification. No rule issues a disciplinary action.
+Unambiguous rows:
+- **R1:** approved exception takes precedence; suppress alert and log the
+  approved accommodation, with no invigilator notification.
+- **R2:** C1=N, C2=Y, C3=N, C4=N; low-priority background log for transient
+  noise; no immediate action.
+- **R6:** C1=N, C2=Y, C3=Y, C4=Y; high-priority verification cue; alert the
+  senior invigilator, require a discreet standardized check, and open an
+  incident draft. Escalation still requires human corroboration.
 
-| Rule | Conditions | System action | Invigilator guidance |
-|---|---|---|---|
-| R1 | Approved exception = Yes | Suppress alert; retain an exception audit log | Confirm the approved record; do not treat the exception as suspicious |
-| R2 | No exception; signal anomaly only; no behavior cue; no persistence | Low-priority background log | No immediate action; wait for independent evidence |
-| R3/R4 | One or partial cues without the high-priority corroboration threshold | Low-priority background cue | Do not interrupt or accuse; seek context/corroboration |
-| R5 | Behavioral cue + persistence/corroboration | High-priority verification cue | Discreet human verification; document observable facts |
-| R6 | Signal anomaly + behavioral cue + persistence/corroboration | High-priority verification cue | Discreet physical check and documented human assessment |
+R3 and R4 show identical C1-C4 symbols in the supplied image but different
+outputs. They cannot be distinguished deterministically from the visible
+inputs. R5's pictograms also need an agreed Boolean interpretation. The code
+therefore preserves conservative background handling for unresolved partial
+combinations rather than inventing missing conditions.
 
-The source image uses icon marks for several R3–R5 cells whose exact values are
-not legible in the supplied recording. The implementation encodes the visible
-rule intent and conservative threshold, rather than inventing precise sensor
-thresholds or claiming a pixel-perfect transcription. Confirm the original
-full-resolution decision-table image before treating R3/R4 combinations as
-institutionally approved policy.
+## 3. R6 swimlane workflow
 
-## 3. High-priority R6 workflow
+The workflow diagram's responsibilities are represented as four lanes:
 
-1. Room/sensor edge performs passive signal monitoring.
-2. The edge/application evaluates posture/behavior indicators and correlates
-   independent anomalies; the application records signal metadata, not intent.
-3. The deterministic engine checks approved accommodations and applies R1–R6.
-4. For a high-priority cue, AIEMS creates a discreet alert for the invigilator.
-5. The invigilator performs a proportionate physical/contextual check.
-6. If the cue is a false positive or benign, record the reason and close it
-   without a disciplinary case.
-7. If the concern remains, the invigilator initiates a formal incident report,
-   records evidence and the student's response, and submits a case file.
-8. The authorized board reviews the case and records its outcome.
-9. The system retains an append-only audit trail of actions and decisions.
+### Room Sensors / AI Engine
+1. Passive signal monitoring.
+2. Posture/behavior cue analysis.
+3. Signal/behavior correlation and persistence assessment.
 
-No automated alert is proof of misconduct. No automated model may skip the
-invigilator, formal reporting, student's right to respond, or authorized board.
+### AIEMS Hub
+1. Receive multiple corroborated anomaly indicators (R6 candidate).
+2. Check **Approved Accommodation (C1)?**
+3. If yes: suppress escalation and silently log the approved exception.
+4. If no: evaluate the R6 condition and issue a correlated high-priority cue.
 
-## 4. Functional requirements
+### Invigilator Mobile UI
+1. Receive high-priority discreet cue.
+2. Perform a discreet physical/contextual check.
+3. Decide whether there is observable evidence requiring a report—not whether
+   the student is guilty.
+4. If no: record a benign/false-positive reason and close the alert.
+5. If concern remains: initiate a formal incident report, prepare the report
+   draft, record evidence and the student's response, then submit the formal
+   case file through the authorized process.
 
-- Exam-session and roster lifecycle: schedules, seating, approved accommodations.
-- Multi-signal ingestion with source identity, timestamps, and clock-sync metadata.
-- Deterministic rule evaluation on the server; browser-submitted priority values are never trusted.
-- Discreet invigilator workflow with a target of under 10 seconds for alert delivery/action acknowledgement where deployment supports it.
-- Append-only audit events for alert, acknowledgement, observation, incident, review, and closure.
-- Human review queue, case notes, evidence references, and appeal/outcome recording.
-- Manual identity/attendance route when sensor, network, camera, or accommodation requires it.
+### Disciplinary Board / Audit
+1. Receive the submitted formal case file.
+2. Conduct authorized human review and record the outcome.
+3. Preserve the action history in an append-only audit trail.
+
+No automated alert is proof of misconduct. No model may skip the invigilator,
+the student's opportunity to respond, or the authorized board.
+
+## 4. Functional requirements from the diagrams
+
+- Examination schedules, student rosters, seating plans, and approved
+  accommodation records must be available to authorized roles.
+- Signal inputs must carry source identity, timestamps, and sufficient
+  provenance to support review.
+- Rule evaluation must be deterministic and server-side; client-submitted
+  priority values must never be trusted.
+- Invigilator cues should be discreet, glanceable, and acknowledgeable.
+- The human workflow must support both benign closure and formal incident
+  reporting, including report draft and case-file submission.
+- Audit events must identify actor, timestamp, action, source, and reason.
+- A manual verification route must remain available during sensor/network
+  failure or where accommodations require it.
 
 ## 5. Non-functional requirements
 
-| Area | Requirement |
+| Area | Diagram-aligned requirement |
 |---|---|
-| Latency | Target alert delivery below 3–5 seconds after a valid event reaches the application; measure in deployment |
-| Reliability | Graceful fallback to manual mode during network, sensor, or service failure |
+| Alert latency | Target delivery below 3–5 seconds after a valid event reaches the application; measure under deployment load |
+| Reliability | Graceful manual fallback during network, sensor, or service failure |
 | Usability | Silent, glanceable, high-contrast invigilator interface; avoid disruptive student-facing alarms |
-| Security | Role-based access, TLS, encryption at rest, CSRF protection, input validation, and data isolation |
+| Security | Role-based access, TLS, encryption at rest, CSRF protection, validation, and data isolation |
 | Auditability | Append-only event history with actor, timestamp, source, action, and reason |
-| Privacy | Metadata-first processing; no continuous biometric/facial surveillance; retention limits and deletion workflow |
+| Privacy | Metadata-first processing; purpose limitation, retention limits, and deletion workflow |
 | Accessibility | Pre-registered accommodations and equivalent manual verification path |
 
-Targets are engineering objectives, not measured service-level guarantees until
-load, latency, and failure testing are performed.
+These are design targets, not measured service-level guarantees.
 
 ## 6. Ethics, privacy, and governance
 
-1. Support, not surveillance: no continuous biometric/facial panopticon.
-2. Asymmetric harm and false positives: alerts are cues, never standalone proof.
-3. Equity and accommodations: recognize approved medical/accessibility
-   accommodations; test for device and environmental bias.
-4. Data minimization and retention: metadata-first; define purpose, retention,
-   deletion, and access before collecting real student data.
-5. Transparency and accountability: disclose what is collected, why, who
-   accesses it, how to challenge it, and how to appeal.
-6. Human-in-the-loop due process: a trained human reviews context, records
-   reasons, hears the student, and refers any formal case to the authorized body.
+- **Support, not surveillance:** no continuous biometric/facial panopticon.
+- **False-positive awareness:** alerts are cues, never standalone proof.
+- **Equity and accommodations:** approved medical/accessibility accommodations
+  suppress escalation; test for device and environmental bias.
+- **Data minimization:** metadata-first; define purpose, retention, deletion,
+  and access before collecting real student data.
+- **Transparency and accountability:** disclose what is collected, why, who
+  accesses it, how to challenge it, and how to appeal.
+- **Human-in-the-loop due process:** trained human review, recorded reasons,
+  student response, and authorized institutional referral.
 
-The supplied diagram repeats the Equity & Accommodations label in two boxes;
-this specification treats it as one governance principle rather than
-inventing a sixth principle.
+The governance diagram repeats the Equity & Accommodations label; it is treated
+as one principle rather than inventing a separate principle.
 
 ## 7. Integration boundaries and prototype status
 
 The current repository provides Django authentication, role-based records,
 examination management, a prototype biometric flow, manual review, attendance,
-and audit records. It does not yet provide a production SIS connector, room
-sensor gateway, BLE/Wi-Fi ingestion, posture analytics, immutable external
-audit storage, or a deployed sub-five-second alert service. Those integrations
-must be implemented and tested before the diagrams can be described as
-fully operational.
+and basic audit records. The following remain integration targets, not
+completed production features: SIS connector, BLE/Wi-Fi ingestion, room sensor
+gateway, posture analytics, mobile push/real-time alert service, disciplinary
+board portal, and externally immutable audit storage.
 
-Never store raw student biometrics or real student records in Git. Use
-synthetic data for demonstrations and consented test participants only.
+Do not represent these as live integrations. Use synthetic records and
+consenting test participants only; never commit real student records or raw
+biometrics.
