@@ -3,6 +3,8 @@ from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth import get_user_model
 from django.contrib.auth.password_validation import validate_password
+from django.core.management import call_command
+from django.views.decorators.http import require_POST
 from django.core.exceptions import ValidationError
 from django.http import Http404
 from django.conf import settings
@@ -93,6 +95,27 @@ def dashboard(request):
     if request.user.role == 'student': return render(request, 'dashboard/student_dashboard.html', context)
     if request.user.role == 'invigilator': return render(request, 'dashboard/invigilator_dashboard.html', context)
     return render(request, 'dashboard/admin_dashboard.html', context)
+
+@role_required('admin')
+@require_POST
+def load_demo_data(request):
+    if not request.user.is_superuser:
+        raise Http404
+    demo_exists = Student.objects.filter(user__username__startswith='demo-student-').exists()
+    has_existing_records = (
+        Student.objects.exists()
+        or Examination.objects.exists()
+        or Attendance.objects.exists()
+        or ManualReview.objects.exists()
+        or VerificationLog.objects.exists()
+    )
+    if has_existing_records and not demo_exists:
+        messages.error(request, 'Demo data was not loaded because this database already contains records. Use a separate demo database to avoid mixing synthetic and institutional data.')
+        return redirect('dashboard')
+    call_command('seed_demo_data', confirm=True)
+    messages.success(request, 'Synthetic demonstration records are ready. They are clearly labelled and contain no fabricated biometric matches or verified attendance.')
+    return redirect('dashboard')
+
 
 @role_required('admin')
 def students(request): return render(request, 'students/student_list.html', {'students': Student.objects.select_related('user').order_by('full_name')})
