@@ -148,8 +148,11 @@ def enrollment(request):
     if request.method == 'POST' and selected_student:
         # Require an explicit action in the interface before creating a simulated
         # fingerprint reference. Face capture is optional and must not block this.
+        if request.POST.get('student_consent') != 'yes':
+            messages.error(request, 'Confirm that the student has given informed consent before enrollment.')
+            return redirect('enrollment')
         if request.POST.get('fingerprint_consent') != 'yes':
-            messages.error(request, 'Select Enroll fingerprint first, after confirming the student has consented.')
+            messages.error(request, 'Select Enroll fingerprint first.')
             return redirect('enrollment')
 
         profile, _ = BiometricProfile.objects.get_or_create(student=selected_student)
@@ -157,6 +160,9 @@ def enrollment(request):
         profile.fingerprint_reference = reference
 
         data_url = request.POST.get('face_data', '').strip()
+        if data_url and request.POST.get('face_consent') != 'yes':
+            messages.error(request, 'Face capture was not saved because separate face-processing consent was not provided.')
+            data_url = ''
         face_message = 'Face capture skipped; fingerprint enrollment can be saved on its own.'
         if data_url:
             try:
@@ -177,9 +183,9 @@ def enrollment(request):
         AuditLog.objects.create(
             user=request.user,
             action='biometric_enrollment',
-            description=f'Biometric prototype enrollment updated for {selected_student.admission_number}.',
+            description=f'Biometric prototype enrollment updated for {selected_student.admission_number}; student consent confirmed; face consent: {request.POST.get("face_consent") == "yes" and bool(data_url)}. No original face photograph is retained.',
         )
-        messages.success(request, f'Fingerprint enrollment saved for {selected_student.full_name}. {fp.message} {face_message}')
+        messages.success(request, f'Enrollment record saved for {selected_student.full_name}. {fp.message} {face_message}')
         return redirect('enrollment')
 
     context = {
@@ -231,7 +237,7 @@ def verification(request):
                 decision='pending',
                 defaults={'reason': f"Prototype verification requires human review. Fingerprint: {result['fingerprint_result']}; face: {result['facial_result']}."},
             )
-            AuditLog.objects.create(user=request.user, action='verification_referred', description=f'Verification referred for human review: {student.admission_number} in {examination.code}.')
+            AuditLog.objects.create(user=request.user, action='verification_referred', description=f'Prototype biometric check referred for human review: {student.admission_number} in {examination.code}. Fingerprint result: {result["fingerprint_result"]}; face result: {result["facial_result"]}.')
             messages.warning(request, 'The result was not fully conclusive. It has been referred for human review; no verified attendance was recorded.')
         return redirect('verification')
     return render(request, 'biometrics/verification.html', {'examinations': examinations, 'students': students})
