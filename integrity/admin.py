@@ -10,7 +10,9 @@ class PlatformUserAdmin(UserAdmin):
     add_fieldsets = UserAdmin.add_fieldsets + (
         (None, {'classes': ('wide',), 'fields': ('role',)}),
     )
-admin.site.register([Student, Invigilator, Examination, ExaminationRegistration, BiometricProfile, Attendance, VerificationLog, ManualReview, AuditLog, IncidentCase])
+admin.site.register([Student, Invigilator, Examination, ExaminationRegistration, Attendance, VerificationLog, ManualReview, AuditLog, IncidentCase])
+# BiometricProfile is intentionally excluded from the general Django admin so
+# staff cannot browse sensitive templates through an unfiltered admin list.
 
 @admin.register(IncidentAuditEvent)
 class IncidentAuditEventAdmin(admin.ModelAdmin):
