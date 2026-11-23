@@ -146,46 +146,48 @@ def enrollment(request):
         selected_student = get_object_or_404(Student, pk=request.POST.get('student_id'))
 
     if request.method == 'POST' and selected_student:
-        # Require an explicit action in the interface before creating a simulated
-        # fingerprint reference. Face capture is optional and must not block this.
         if request.POST.get('student_consent') != 'yes':
-            messages.error(request, 'Confirm that the student has given informed consent before enrollment.')
+            messages.error(request, 'Confirm the student has voluntarily consented before enrollment.')
             return redirect('enrollment')
         if request.POST.get('fingerprint_consent') != 'yes':
-            messages.error(request, 'Select Enroll fingerprint first.')
+            messages.error(request, 'Complete the fingerprint enrollment step first.')
+            return redirect('enrollment')
+        if request.POST.get('face_consent') != 'yes':
+            messages.error(request, 'Separate, voluntary face-processing consent is required to complete this enrollment. No face image was collected.')
+            return redirect('enrollment')
+
+        data_url = request.POST.get('face_data', '').strip()
+        if not data_url:
+            messages.error(request, 'Face capture is required. Start the camera, capture the student's face, then save enrollment.')
+            return redirect('enrollment')
+
+        try:
+            header, encoded = data_url.split(',', 1)
+            if header != 'data:image/jpeg;base64' or len(encoded) > 5 * 1024 * 1024:
+                raise ValueError('Unsupported or oversized image.')
+            face_bytes = base64.b64decode(encoded, validate=True)
+        except (ValueError, TypeError):
+            messages.error(request, 'The captured face image could not be read. Please capture again.')
+            return redirect('enrollment')
+
+        template, face = enroll_face(face_bytes)
+        if not template:
+            messages.error(request, f'Face capture could not be processed: {face.message} Please capture again.')
             return redirect('enrollment')
 
         profile, _ = BiometricProfile.objects.get_or_create(student=selected_student)
         reference, fp = enroll_fingerprint(selected_student)
         profile.fingerprint_reference = reference
-
-        data_url = request.POST.get('face_data', '').strip()
-        if data_url and request.POST.get('face_consent') != 'yes':
-            messages.error(request, 'Face capture was not saved because separate face-processing consent was not provided.')
-            data_url = ''
-        face_message = 'Face capture skipped; fingerprint enrollment can be saved on its own.'
-        if data_url:
-            try:
-                header, encoded = data_url.split(',', 1)
-                if header != 'data:image/jpeg;base64' or len(encoded) > 5 * 1024 * 1024:
-                    raise ValueError('Unsupported or oversized image.')
-                face_bytes = base64.b64decode(encoded, validate=True)
-            except (ValueError, TypeError):
-                face_bytes = b''
-            template, face = enroll_face(face_bytes)
-            if template:
-                profile.facial_template = template
-            face_message = face.message
-
-        profile.enrollment_status = 'enrolled' if profile.facial_template else 'fingerprint_only'
+        profile.facial_template = template
+        profile.enrollment_status = 'enrolled'
         profile.enrollment_date = timezone.now()
         profile.save()
         AuditLog.objects.create(
             user=request.user,
             action='biometric_enrollment',
-            description=f'Biometric prototype enrollment updated for {selected_student.admission_number}; student consent confirmed; face consent: {request.POST.get("face_consent") == "yes" and bool(data_url)}. No original face photograph is retained.',
+            description=f'Biometric prototype enrollment updated for {selected_student.admission_number}; student and separate face consent confirmed. Encrypted facial template stored; original face photograph discarded.',
         )
-        messages.success(request, f'Enrollment record saved for {selected_student.full_name}. {fp.message} {face_message}')
+        messages.success(request, f'Enrollment record saved for {selected_student.full_name}. {fp.message} {face.message}')
         return redirect('enrollment')
 
     context = {
