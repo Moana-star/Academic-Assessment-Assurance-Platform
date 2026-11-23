@@ -340,3 +340,29 @@ video { width: 100%; background: var(--plum); border-radius: 8px; min-height: 22
     text-underline-offset: 3px;
   }
 }
+
+
+/* Sign-out uses a POST form to satisfy Django's CSRF-protected LogoutView */
+.logout-form { margin: 0; padding: 0; border: 0; }
+.logout-button {
+  appearance: none;
+  border: 0;
+  padding: 6px 0;
+  background: transparent;
+  color: #E6B9C6;
+  font: 600 14px 'DM Sans', sans-serif;
+  text-align: left;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  cursor: pointer;
+}
+.logout-button:hover, .logout-button:focus-visible { color: #FFFFFF; }
+@media (max-width: 800px) {
+  aside .logout-form { margin: 0; }
+  aside .logout-button {
+    color: #6D3B5D !important;
+    font-weight: 700;
+    min-height: 40px;
+    padding: 8px 10px;
+  }
+}
