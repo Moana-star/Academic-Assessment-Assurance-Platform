@@ -122,6 +122,14 @@ class IntegrityCoreTests(TestCase):
         response = self.client.post('/demo-data/load/')
         self.assertEqual(response.status_code, 404)
 
+    def test_facial_templates_are_encrypted_at_rest_and_decryptable(self):
+        from integrity.services.face_service import _decrypt_template, encrypt_template
+        plain = 'eyJ2ZWN0b3IiOiBbMC4xLCAwLjJdfQ=='
+        encrypted = encrypt_template(plain)
+        self.assertTrue(encrypted.startswith('fernet:v1:'))
+        self.assertNotIn(plain, encrypted)
+        self.assertEqual(_decrypt_template(encrypted), plain)
+
     def test_student_can_enroll_fingerprint_without_face_capture(self):
         self.client.force_login(self.student.user)
         response = self.client.post('/biometrics/enroll/', {'student_consent': 'yes', 'fingerprint_consent': 'yes'})
