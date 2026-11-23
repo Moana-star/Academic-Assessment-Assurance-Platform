@@ -4,7 +4,7 @@
   <div>
     <p class="eyebrow">Identity setup</p>
     <h1>Biometric enrollment</h1>
-    <p>Register a student's fingerprint first. Face processing is optional and requires separate student consent.</p>
+    <p>Complete fingerprint setup and face capture. Face processing requires separate, voluntary student consent.</p>
   </div>
   <span class="pill">Simulation mode</span>
 </div>
@@ -50,16 +50,16 @@
     </div>
 
     <div class="panel">
-      <p class="eyebrow">Step 2 · Optional</p>
+      <p class="eyebrow">Step 2 · Required</p>
       <h2>Face capture</h2>
-      <p>You can save enrollment without capturing a face. Face processing is optional and requires separate consent.</p>
-      <label><input type="checkbox" name="face_consent" value="yes" id="face-consent"> Student separately consents to face-image processing for this prototype.</label>
+      <p>Face capture is required to complete this enrollment. It must only proceed after the student gives separate, voluntary consent.</p>
+      <label><input type="checkbox" name="face_consent" value="yes" id="face-consent" required> Student separately consents to face-image processing for this prototype.</label>
       <video id="camera" autoplay muted playsinline></video>
       <canvas id="canvas" hidden></canvas>
       <input type="hidden" name="face_data" id="form-face-data">
       <button type="button" class="button secondary" id="start-camera">Start camera</button>
       <button type="button" class="button secondary" id="capture" disabled>Capture face</button>
-      <p id="camera-status" role="status">Camera not started. Face capture is optional.</p>
+      <p id="camera-status" role="status">Camera not started. Face capture is required to complete enrollment.</p>
     </div>
   </section>
 
