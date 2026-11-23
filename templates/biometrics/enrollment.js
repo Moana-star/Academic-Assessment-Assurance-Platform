@@ -62,11 +62,11 @@
   });
 
   form.addEventListener('submit', event => {
-    if (!studentConsent.checked || fingerprintConsent.value !== 'yes') {
+    if (!studentConsent.checked || fingerprintConsent.value !== 'yes' || !faceConsent.checked || !faceField.value) {
       event.preventDefault();
-      fingerprintStatus.textContent = 'Click Enroll fingerprint before saving the enrollment record.';
+      fingerprintStatus.textContent = 'Complete fingerprint enrollment, give separate face consent, and capture the face before saving.';
       fingerprintStatus.classList.add('warning');
-      fingerprintButton.focus();
+      if (fingerprintConsent.value !== 'yes') fingerprintButton.focus(); else if (!faceConsent.checked) faceConsent.focus(); else capture.focus();
     }
   });
 
