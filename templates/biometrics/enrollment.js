@@ -1,15 +1,27 @@
 (() => {
   const video = document.querySelector('#camera');
   const canvas = document.querySelector('#canvas');
-  const field = document.querySelector('#form-face-data');
-  const start = document.querySelector('#start-camera');
+  const faceField = document.querySelector('#form-face-data');
+  const fingerprintConsent = document.querySelector('#fingerprint-consent');
+  const fingerprintButton = document.querySelector('#start-fingerprint');
+  const fingerprintStatus = document.querySelector('#fingerprint-status');
+  const startCamera = document.querySelector('#start-camera');
   const capture = document.querySelector('#capture');
-  const status = document.querySelector('#camera-status');
+  const cameraStatus = document.querySelector('#camera-status');
   const form = document.querySelector('#enroll-form');
   let stream = null;
-  start.addEventListener('click', async () => {
+
+  fingerprintButton.addEventListener('click', () => {
+    fingerprintConsent.value = 'yes';
+    fingerprintStatus.textContent = 'Fingerprint step completed in simulation. Select Save enrollment to store the record.';
+    fingerprintStatus.classList.add('success');
+    fingerprintButton.textContent = 'Fingerprint ready to save';
+    fingerprintButton.disabled = true;
+  });
+
+  startCamera.addEventListener('click', async () => {
     if (!navigator.mediaDevices?.getUserMedia) {
-      status.textContent = 'Camera access is unavailable. Use HTTPS and a supported browser.';
+      cameraStatus.textContent = 'Camera access is unavailable. Use HTTPS and a supported browser.';
       return;
     }
     try {
@@ -17,27 +29,34 @@
       video.srcObject = stream;
       await video.play();
       capture.disabled = false;
-      status.textContent = 'Camera ready. Capture one consenting student only.';
+      cameraStatus.textContent = 'Camera ready. Capture one consenting student only.';
     } catch (error) {
-      status.textContent = error.name === 'NotAllowedError' ? 'Camera permission was denied. Allow camera access and try again.' : 'Could not start the camera. Check that it is connected and not in use by another app.';
+      cameraStatus.textContent = error.name === 'NotAllowedError'
+        ? 'Camera permission was denied. Allow camera access and try again.'
+        : 'Could not start the camera. Check that it is connected and not in use by another app.';
     }
   });
+
   capture.addEventListener('click', () => {
     if (!video.videoWidth || !video.videoHeight) {
-      status.textContent = 'Wait until the camera preview is ready, then capture again.';
+      cameraStatus.textContent = 'Wait until the camera preview is ready, then capture again.';
       return;
     }
     canvas.width = video.videoWidth;
     canvas.height = video.videoHeight;
     canvas.getContext('2d').drawImage(video, 0, 0);
-    field.value = canvas.toDataURL('image/jpeg', 0.82);
-    status.textContent = 'Face capture ready. Save enrollment to process the image.';
+    faceField.value = canvas.toDataURL('image/jpeg', 0.82);
+    cameraStatus.textContent = 'Face capture ready. It will be saved together with the fingerprint record.';
   });
+
   form.addEventListener('submit', event => {
-    if (!field.value) {
+    if (fingerprintConsent.value !== 'yes') {
       event.preventDefault();
-      status.textContent = 'Capture a face image before saving enrollment.';
+      fingerprintStatus.textContent = 'Click Enroll fingerprint before saving the enrollment record.';
+      fingerprintStatus.classList.add('warning');
+      fingerprintButton.focus();
     }
   });
+
   window.addEventListener('pagehide', () => stream?.getTracks().forEach(track => track.stop()));
 })();
