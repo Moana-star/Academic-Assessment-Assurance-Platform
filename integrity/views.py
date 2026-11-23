@@ -144,27 +144,44 @@ def enrollment(request):
     selected_student = own_student
     if request.user.role == 'admin' and request.method == 'POST':
         selected_student = get_object_or_404(Student, pk=request.POST.get('student_id'))
+
     if request.method == 'POST' and selected_student:
+        # Require an explicit action in the interface before creating a simulated
+        # fingerprint reference. Face capture is optional and must not block this.
+        if request.POST.get('fingerprint_consent') != 'yes':
+            messages.error(request, 'Select Enroll fingerprint first, after confirming the student has consented.')
+            return redirect('enrollment')
+
         profile, _ = BiometricProfile.objects.get_or_create(student=selected_student)
         reference, fp = enroll_fingerprint(selected_student)
         profile.fingerprint_reference = reference
-        data_url = request.POST.get('face_data', '')
-        try:
-            header, encoded = data_url.split(',', 1)
-            if header != 'data:image/jpeg;base64' or len(encoded) > 5 * 1024 * 1024:
-                raise ValueError('Unsupported or oversized image.')
-            face_bytes = base64.b64decode(encoded, validate=True)
-        except (ValueError, TypeError):
-            face_bytes = b''
-        template, face = enroll_face(face_bytes)
-        if template:
-            profile.facial_template = template
-        profile.enrollment_status = 'enrolled' if template else 'fingerprint_only'
+
+        data_url = request.POST.get('face_data', '').strip()
+        face_message = 'Face capture skipped; fingerprint enrollment can be saved on its own.'
+        if data_url:
+            try:
+                header, encoded = data_url.split(',', 1)
+                if header != 'data:image/jpeg;base64' or len(encoded) > 5 * 1024 * 1024:
+                    raise ValueError('Unsupported or oversized image.')
+                face_bytes = base64.b64decode(encoded, validate=True)
+            except (ValueError, TypeError):
+                face_bytes = b''
+            template, face = enroll_face(face_bytes)
+            if template:
+                profile.facial_template = template
+            face_message = face.message
+
+        profile.enrollment_status = 'enrolled' if profile.facial_template else 'fingerprint_only'
         profile.enrollment_date = timezone.now()
         profile.save()
-        AuditLog.objects.create(user=request.user, action='biometric_enrollment', description=f'Biometric prototype enrollment updated for {selected_student.admission_number}.')
-        messages.success(request, f'Enrollment saved for {selected_student.full_name}. {fp.message} {face.message}')
+        AuditLog.objects.create(
+            user=request.user,
+            action='biometric_enrollment',
+            description=f'Biometric prototype enrollment updated for {selected_student.admission_number}.',
+        )
+        messages.success(request, f'Fingerprint enrollment saved for {selected_student.full_name}. {fp.message} {face_message}')
         return redirect('enrollment')
+
     context = {
         'student': own_student,
         'selected_student': selected_student,
