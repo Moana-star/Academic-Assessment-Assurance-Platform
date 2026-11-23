@@ -51,6 +51,15 @@ The repository does not yet include a production SIS connector, room-sensor gate
 - Use synthetic records and consenting test participants only.
 - Never commit credentials, raw biometrics, real student photographs, private records, or local databases.
 
+## Biometric security and integration status
+
+- Facial templates are encrypted before database storage using Fernet. Set a dedicated `BIOMETRIC_ENCRYPTION_KEY` in the deployment environment; generate it with `python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"` and keep it stable and private. A key derived from `DJANGO_SECRET_KEY` is used only as a fallback.
+- Existing legacy face templates remain readable for compatibility and are replaced with encrypted templates on the next successful face enrollment. Back up the database and preserve the encryption key before rotating secrets.
+- The browser camera image is processed in memory; the original capture is not stored. The encrypted template is the only face-derived value retained.
+- Student consent is required for enrollment, with separate consent for face processing. Enrollment and verification actions are written to the audit log.
+- Fingerprint capture remains a placeholder until a physical scanner, vendor SDK, and trusted server-side adapter are selected. The prototype fingerprint check returns `unavailable`; the lightweight OpenCV face comparison cannot approve attendance. Prototype verification always goes to human review.
+- Biometric profiles are excluded from the general Django admin listing. Production use still requires a privacy impact assessment, institutional policy approval, retention/deletion rules, independent security review, and validated hardware/biometric algorithms.
+
 ## Local development
 
 Run from the repository root in PowerShell:
