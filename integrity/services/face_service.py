@@ -1,8 +1,13 @@
 import base64
+import hashlib
 import json
+from dataclasses import dataclass
+
 import cv2
 import numpy as np
-from dataclasses import dataclass
+from cryptography.fernet import Fernet, InvalidToken
+from django.conf import settings
+
 
 @dataclass
 class FaceResult:
@@ -10,30 +15,74 @@ class FaceResult:
     message: str
     confidence: float = 0.0
 
+
+def _cipher():
+    # A dedicated BIOMETRIC_ENCRYPTION_KEY is preferred. The fallback is
+    # derived from Django's SECRET_KEY so deployments do not silently store
+    # new templates in plaintext; rotate by re-enrolling after key changes.
+    configured = getattr(settings, 'BIOMETRIC_ENCRYPTION_KEY', '')
+    if configured:
+        key = configured.encode() if isinstance(configured, str) else configured
+        return Fernet(key)
+    digest = hashlib.sha256((settings.SECRET_KEY + ':biometric-template-v1').encode()).digest()
+    return Fernet(base64.urlsafe_b64encode(digest))
+
+
 def _vector(image_bytes):
     image = cv2.imdecode(np.frombuffer(image_bytes, dtype=np.uint8), cv2.IMREAD_GRAYSCALE)
-    if image is None: return None, 'The upload is not a readable image.'
+    if image is None:
+        return None, 'The upload is not a readable image.'
     detector = cv2.CascadeClassifier(cv2.data.haarcascades + 'haarcascade_frontalface_default.xml')
     faces = detector.detectMultiScale(image, scaleFactor=1.1, minNeighbors=5, minSize=(80, 80))
-    if len(faces) == 0: return None, 'No face detected. Use a clear, front-facing image.'
-    if len(faces) > 1: return None, 'Multiple faces detected. Capture only the student.'
+    if len(faces) == 0:
+        return None, 'No face detected. Use a clear, front-facing image.'
+    if len(faces) > 1:
+        return None, 'Multiple faces detected. Capture only the student.'
     x, y, w, h = faces[0]
     crop = cv2.resize(image[y:y+h, x:x+w], (32, 32)).astype(np.float32)
     crop = (crop - crop.mean()) / (crop.std() + 1e-6)
     return crop.flatten().tolist(), ''
 
+
+def _decrypt_template(stored):
+    if stored.startswith('fernet:v1:'):
+        try:
+            return _cipher().decrypt(stored.split(':', 2)[2].encode()).decode()
+        except (InvalidToken, ValueError, TypeError):
+            return None
+    # Existing prototype records were base64-encoded JSON. Keep read
+    # compatibility until the next enrollment overwrites them.
+    return stored
+
+
+def encrypt_template(template):
+    token = _cipher().encrypt(template.encode()).decode()
+    return 'fernet:v1:' + token
+
+
 def enroll(image_bytes):
-    if not image_bytes or len(image_bytes) < 100: return None, FaceResult('inconclusive', 'The captured image is too small to process.')
+    if not image_bytes or len(image_bytes) < 100:
+        return None, FaceResult('inconclusive', 'The captured image is too small to process.')
     vector, error = _vector(image_bytes)
-    if error: return None, FaceResult('inconclusive', error)
-    return base64.b64encode(json.dumps(vector).encode()).decode(), FaceResult('enrolled', 'Facial template created with OpenCV face detection.')
+    if error:
+        return None, FaceResult('inconclusive', error)
+    serialized = base64.b64encode(json.dumps(vector).encode()).decode()
+    return encrypt_template(serialized), FaceResult('enrolled', 'Facial template processed and encrypted for storage.')
+
 
 def verify(template, image_bytes):
-    if not template or not image_bytes: return FaceResult('unavailable', 'Facial enrollment or capture is unavailable.')
+    if not template or not image_bytes:
+        return FaceResult('unavailable', 'Facial enrollment or capture is unavailable.')
     vector, error = _vector(image_bytes)
-    if error: return FaceResult('inconclusive', error)
-    try: enrolled = np.array(json.loads(base64.b64decode(template)), dtype=np.float32)
-    except Exception: return FaceResult('inconclusive', 'The stored facial template is invalid.')
+    if error:
+        return FaceResult('inconclusive', error)
+    try:
+        decrypted = _decrypt_template(template)
+        if not decrypted:
+            raise ValueError('Unable to decrypt template')
+        enrolled = np.array(json.loads(base64.b64decode(decrypted)), dtype=np.float32)
+    except Exception:
+        return FaceResult('inconclusive', 'The stored facial template could not be read.')
     current = np.array(vector, dtype=np.float32)
     distance = float(np.linalg.norm(enrolled - current) / max(len(current), 1))
-    return FaceResult('match' if distance < 0.35 else 'mismatch', 'OpenCV comparison completed; inconclusive cases require human review.', max(0.0, 1.0-distance))
+    return FaceResult('match' if distance < 0.35 else 'mismatch', 'Prototype image comparison only; a trained, validated biometric matcher and human review are required.', max(0.0, 1.0-distance))
