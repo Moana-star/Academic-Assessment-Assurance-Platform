@@ -10,6 +10,9 @@
 </div>
 
 <form method="post" id="enroll-form">
+  <div class="panel consent-panel">
+    <label><input type="checkbox" name="student_consent" value="yes" id="student-consent" required> The student has been informed about this prototype, what data is processed, and has voluntarily consented to enrollment.</label>
+  </div>
   {% csrf_token %}
   {% if user.role == 'admin' %}
     <div class="panel">
@@ -34,7 +37,7 @@
     <div class="panel fingerprint-panel">
       <p class="eyebrow">Step 1 · Required</p>
       <h2>Fingerprint enrollment</h2>
-      <p>This version records a backend-generated simulated fingerprint reference. It does not read a physical USB fingerprint scanner.</p>
+      <p>Prototype only: this creates a placeholder reference. No physical scanner is connected, and this is not fingerprint recognition.</p>
       <div class="scan" aria-hidden="true">◉</div>
       <p class="status" id="fingerprint-status" role="status">
         Current status: {{ profile.enrollment_status|default:'Not enrolled' }}
@@ -42,14 +45,15 @@
       <input type="hidden" name="fingerprint_consent" id="fingerprint-consent" value="">
       <button type="button" class="button" id="start-fingerprint" {% if user.role == 'admin' and not students or user.role != 'admin' and not student %}disabled{% endif %}>Enroll fingerprint</button>
       {% if profile.fingerprint_reference %}
-        <p class="caption">A fingerprint reference is already saved for this student. Enrolling again updates its enrollment date.</p>
+        <p class="caption">A placeholder reference is already saved. It is not a real fingerprint template.</p>
       {% endif %}
     </div>
 
     <div class="panel">
       <p class="eyebrow">Step 2 · Optional</p>
       <h2>Face capture</h2>
-      <p>You can save fingerprint enrollment without capturing a face. Face capture requires the student's consent.</p>
+      <p>You can save enrollment without capturing a face. Face processing is optional and requires separate consent.</p>
+      <label><input type="checkbox" name="face_consent" value="yes" id="face-consent"> Student separately consents to face-image processing for this prototype.</label>
       <video id="camera" autoplay muted playsinline></video>
       <canvas id="canvas" hidden></canvas>
       <input type="hidden" name="face_data" id="form-face-data">
