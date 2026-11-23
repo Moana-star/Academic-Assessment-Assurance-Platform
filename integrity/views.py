@@ -158,7 +158,7 @@ def enrollment(request):
 
         data_url = request.POST.get('face_data', '').strip()
         if not data_url:
-            messages.error(request, 'Face capture is required. Start the camera, capture the student's face, then save enrollment.')
+            messages.error(request, "Face capture is required. Start the camera, capture the student's face, then save enrollment.")
             return redirect('enrollment')
 
         try:
