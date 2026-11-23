@@ -3,6 +3,8 @@
   const canvas = document.querySelector('#canvas');
   const faceField = document.querySelector('#form-face-data');
   const fingerprintConsent = document.querySelector('#fingerprint-consent');
+  const studentConsent = document.querySelector('#student-consent');
+  const faceConsent = document.querySelector('#face-consent');
   const fingerprintButton = document.querySelector('#start-fingerprint');
   const fingerprintStatus = document.querySelector('#fingerprint-status');
   const startCamera = document.querySelector('#start-camera');
@@ -12,6 +14,11 @@
   let stream = null;
 
   fingerprintButton.addEventListener('click', () => {
+    if (!studentConsent.checked) {
+      fingerprintStatus.textContent = 'Confirm the student consent checkbox before continuing.';
+      studentConsent.focus();
+      return;
+    }
     fingerprintConsent.value = 'yes';
     fingerprintStatus.textContent = 'Fingerprint step completed in simulation. Select Save enrollment to store the record.';
     fingerprintStatus.classList.add('success');
@@ -38,6 +45,11 @@
   });
 
   capture.addEventListener('click', () => {
+    if (!faceConsent.checked) {
+      cameraStatus.textContent = 'Separate face-processing consent is required before capture.';
+      faceConsent.focus();
+      return;
+    }
     if (!video.videoWidth || !video.videoHeight) {
       cameraStatus.textContent = 'Wait until the camera preview is ready, then capture again.';
       return;
@@ -50,7 +62,7 @@
   });
 
   form.addEventListener('submit', event => {
-    if (fingerprintConsent.value !== 'yes') {
+    if (!studentConsent.checked || fingerprintConsent.value !== 'yes') {
       event.preventDefault();
       fingerprintStatus.textContent = 'Click Enroll fingerprint before saving the enrollment record.';
       fingerprintStatus.classList.add('warning');
