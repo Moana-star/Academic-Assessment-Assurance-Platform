@@ -58,7 +58,7 @@
     canvas.height = video.videoHeight;
     canvas.getContext('2d').drawImage(video, 0, 0);
     faceField.value = canvas.toDataURL('image/jpeg', 0.82);
-    cameraStatus.textContent = 'Face capture ready. It will be saved together with the fingerprint record.';
+    cameraStatus.textContent = 'Face image processed in memory. Only the encrypted facial template is stored; the original photo is discarded.';
   });
 
   form.addEventListener('submit', event => {
