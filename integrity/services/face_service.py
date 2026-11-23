@@ -32,7 +32,14 @@ def _vector(image_bytes):
     image = cv2.imdecode(np.frombuffer(image_bytes, dtype=np.uint8), cv2.IMREAD_GRAYSCALE)
     if image is None:
         return None, 'The upload is not a readable image.'
-    detector = cv2.CascadeClassifier(cv2.data.haarcascades + 'haarcascade_frontalface_default.xml')
+    # Some serverless OpenCV builds can import cv2 but omit the cascade API.
+    # Treat that as an unavailable prototype capability, never as an HTTP 500.
+    if not hasattr(cv2, 'CascadeClassifier') or not hasattr(cv2, 'data'):
+        return None, 'Face detection is temporarily unavailable on this server. Fingerprint placeholder enrollment can still be saved without a face capture.'
+    cascade_path = cv2.data.haarcascades + 'haarcascade_frontalface_default.xml'
+    detector = cv2.CascadeClassifier(cascade_path)
+    if detector.empty():
+        return None, 'The face-detection model is unavailable on this server. Please try again later.'
     faces = detector.detectMultiScale(image, scaleFactor=1.1, minNeighbors=5, minSize=(80, 80))
     if len(faces) == 0:
         return None, 'No face detected. Use a clear, front-facing image.'
