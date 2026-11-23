@@ -124,7 +124,7 @@ class IntegrityCoreTests(TestCase):
 
     def test_student_can_enroll_fingerprint_without_face_capture(self):
         self.client.force_login(self.student.user)
-        response = self.client.post('/biometrics/enroll/', {'fingerprint_consent': 'yes'})
+        response = self.client.post('/biometrics/enroll/', {'student_consent': 'yes', 'fingerprint_consent': 'yes'})
         self.assertRedirects(response, '/biometrics/enroll/')
         profile = BiometricProfile.objects.get(student=self.student)
         self.assertTrue(profile.fingerprint_reference)
@@ -132,17 +132,39 @@ class IntegrityCoreTests(TestCase):
         self.assertIsNotNone(profile.enrollment_date)
         self.assertTrue(AuditLog.objects.filter(action='biometric_enrollment').exists())
 
+    def test_enrollment_requires_student_consent(self):
+        self.client.force_login(self.student.user)
+        response = self.client.post('/biometrics/enroll/', {'fingerprint_consent': 'yes'})
+        self.assertRedirects(response, '/biometrics/enroll/')
+        self.assertFalse(BiometricProfile.objects.filter(student=self.student).exists())
+
     def test_fingerprint_enrollment_requires_explicit_enroll_action(self):
         self.client.force_login(self.student.user)
         response = self.client.post('/biometrics/enroll/', {})
         self.assertRedirects(response, '/biometrics/enroll/')
         self.assertFalse(BiometricProfile.objects.filter(student=self.student).exists())
 
+    def test_prototype_biometric_verification_never_auto_records_attendance(self):
+        admin = get_user_model().objects.create_user(username='verification-safety-admin', password='admin-pass-123', role='admin')
+        BiometricProfile.objects.create(student=self.student, fingerprint_reference='SIMULATION-NOT-A-BIOMETRIC')
+        self.client.force_login(admin)
+        response = self.client.post('/biometrics/verify/', {
+            'examination': self.exam.pk,
+            'admission_number': self.student.admission_number,
+            'face_data': '',
+        })
+        self.assertRedirects(response, '/biometrics/verify/')
+        log = VerificationLog.objects.get()
+        self.assertEqual(log.fingerprint_result, 'unavailable')
+        self.assertEqual(log.overall_result, 'manual_review')
+        self.assertFalse(Attendance.objects.filter(student=self.student, examination=self.exam, attendance_status=Attendance.Status.PRESENT).exists())
+
     def test_admin_can_enroll_selected_student_fingerprint(self):
         admin = get_user_model().objects.create_user(username='biometric-admin', password='admin-pass-123', role='admin')
         self.client.force_login(admin)
         response = self.client.post('/biometrics/enroll/', {
             'student_id': self.student.pk,
+            'student_consent': 'yes',
             'fingerprint_consent': 'yes',
         })
         self.assertRedirects(response, '/biometrics/enroll/')
