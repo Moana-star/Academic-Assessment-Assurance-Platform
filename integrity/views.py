@@ -227,20 +227,21 @@ def verification(request):
             overall_result=result['overall_result'],
             reviewing_invigilator=getattr(request.user, 'invigilator_profile', None),
         )
-        if result['overall_result'] == 'verified':
-            from .services.attendance_service import record
-            record(student, examination, status=Attendance.Status.PRESENT, method='simulated_fingerprint+face_prototype')
-            AuditLog.objects.create(user=request.user, action='attendance_verified', description=f'Prototype verification passed for {student.admission_number} in {examination.code}.')
-            messages.success(request, 'Both prototype checks matched. Attendance was recorded; this is not a production biometric identity decision.')
-        else:
-            ManualReview.objects.get_or_create(
-                student=student,
-                examination=examination,
-                decision='pending',
-                defaults={'reason': f"Prototype verification requires human review. Fingerprint: {result['fingerprint_result']}; face: {result['facial_result']}."},
-            )
-            AuditLog.objects.create(user=request.user, action='verification_referred', description=f'Prototype biometric check referred for human review: {student.admission_number} in {examination.code}. Fingerprint result: {result["fingerprint_result"]}; face result: {result["facial_result"]}.')
-            messages.warning(request, 'The result was not fully conclusive. It has been referred for human review; no verified attendance was recorded.')
+        # Prototype biometric output is never authoritative. Even if a future
+        # adapter accidentally returns "verified", attendance must remain
+        # provisional until an authorized human completes the review.
+        ManualReview.objects.get_or_create(
+            student=student,
+            examination=examination,
+            decision='pending',
+            defaults={'reason': f"Prototype verification requires human review. Fingerprint: {result['fingerprint_result']}; face: {result['facial_result']}; combined result: {result['overall_result']}."},
+        )
+        AuditLog.objects.create(
+            user=request.user,
+            action='verification_referred',
+            description=f'Prototype biometric check referred for human review: {student.admission_number} in {examination.code}. Fingerprint result: {result["fingerprint_result"]}; face result: {result["facial_result"]}; combined result: {result["overall_result"]}.',
+        )
+        messages.warning(request, 'Prototype results cannot confirm identity or attendance. The attempt has been referred for authorized human review.')
         return redirect('verification')
     return render(request, 'biometrics/verification.html', {'examinations': examinations, 'students': students})
 
