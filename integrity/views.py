@@ -1,9 +1,7 @@
-import base64
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth import get_user_model
 from django.contrib.auth.password_validation import validate_password
-from django.core.management import call_command
 from django.views.decorators.http import require_POST
 from django.core.exceptions import ValidationError
 from django.http import Http404
@@ -13,10 +11,8 @@ from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import timezone
 from django.utils.crypto import constant_time_compare
 from .forms import ExaminationForm, RegistrationForm, StudentForm
-from .models import Attendance, AuditLog, BiometricProfile, Examination, IncidentAuditEvent, IncidentCase, ManualReview, Student, VerificationLog
+from .models import Attendance, AuditLog, Examination, ExaminationRegistration, IdentityVerification, IncidentAuditEvent, IncidentCase, ManualReview, Student
 from .permissions import role_required
-from .services.fingerprint_service import enroll as enroll_fingerprint
-from .services.face_service import enroll as enroll_face
 from .services.anomaly_decision import AnomalyInputs, evaluate as evaluate_anomaly
 from .services.human_verification import CaseStatus, WorkflowError, transition_case
 
@@ -93,31 +89,10 @@ def approve_account(request, user_id):
 
 @login_required
 def dashboard(request):
-    context = {'students_count': Student.objects.count(), 'exams_count': Examination.objects.count(), 'verified_count': Attendance.objects.filter(attendance_status='present').count(), 'reviews_count': ManualReview.objects.filter(decision='pending').count(), 'upcoming': Examination.objects.filter(examination_date__gte=timezone.localdate()).order_by('examination_date')[:5], 'recent_logs': VerificationLog.objects.select_related('student','examination').order_by('-timestamp')[:6], 'demo_data_present': Student.objects.filter(user__username__startswith='demo-student-').exists()}
+    context = {'students_count': Student.objects.count(), 'exams_count': Examination.objects.count(), 'verified_count': Attendance.objects.filter(attendance_status='present').count(), 'reviews_count': ManualReview.objects.filter(decision='pending').count(), 'upcoming': Examination.objects.filter(examination_date__gte=timezone.localdate()).order_by('examination_date')[:5], 'recent_logs': IdentityVerification.objects.select_related('student', 'examination', 'checked_by').order_by('-checked_at')[:6]}
     if request.user.role == 'student': return render(request, 'dashboard/student_dashboard.html', context)
     if request.user.role == 'invigilator': return render(request, 'dashboard/invigilator_dashboard.html', context)
     return render(request, 'dashboard/admin_dashboard.html', context)
-
-@role_required('admin')
-@require_POST
-def load_demo_data(request):
-    if not request.user.is_superuser:
-        raise Http404
-    demo_exists = Student.objects.filter(user__username__startswith='demo-student-').exists()
-    has_existing_records = (
-        Student.objects.exists()
-        or Examination.objects.exists()
-        or Attendance.objects.exists()
-        or ManualReview.objects.exists()
-        or VerificationLog.objects.exists()
-    )
-    if has_existing_records and not demo_exists:
-        messages.error(request, 'Demo data was not loaded because this database already contains records. Use a separate demo database to avoid mixing synthetic and institutional data.')
-        return redirect('dashboard')
-    call_command('seed_demo_data', confirm=True)
-    messages.success(request, 'Synthetic demonstration records are ready. They are clearly labelled and contain no fabricated biometric matches or verified attendance.')
-    return redirect('dashboard')
-
 
 @role_required('admin')
 def students(request): return render(request, 'students/student_list.html', {'students': Student.objects.select_related('user').order_by('full_name')})
@@ -138,111 +113,69 @@ def examination_add(request):
     if form.is_valid(): form.save(); messages.success(request, 'Examination created.'); return redirect('examinations')
     return render(request, 'examinations/examination_form.html', {'form': form, 'title': 'Create examination'})
 
-@role_required('admin','student')
-def enrollment(request):
-    own_student = getattr(request.user, 'student_profile', None)
-    selected_student = own_student
-    if request.user.role == 'admin' and request.method == 'POST':
-        selected_student = get_object_or_404(Student, pk=request.POST.get('student_id'))
-
-    if request.method == 'POST' and selected_student:
-        if request.POST.get('student_consent') != 'yes':
-            messages.error(request, 'Confirm the student has voluntarily consented before enrollment.')
-            return redirect('enrollment')
-        if request.POST.get('fingerprint_consent') != 'yes':
-            messages.error(request, 'Complete the fingerprint enrollment step first.')
-            return redirect('enrollment')
-        if request.POST.get('face_consent') != 'yes':
-            messages.error(request, 'Separate, voluntary face-processing consent is required to complete this enrollment. No face image was collected.')
-            return redirect('enrollment')
-
-        data_url = request.POST.get('face_data', '').strip()
-        if not data_url:
-            messages.error(request, "Face capture is required. Start the camera, capture the student's face, then save enrollment.")
-            return redirect('enrollment')
-
-        try:
-            header, encoded = data_url.split(',', 1)
-            if header != 'data:image/jpeg;base64' or len(encoded) > 5 * 1024 * 1024:
-                raise ValueError('Unsupported or oversized image.')
-            face_bytes = base64.b64decode(encoded, validate=True)
-        except (ValueError, TypeError):
-            messages.error(request, 'The captured face image could not be read. Please capture again.')
-            return redirect('enrollment')
-
-        template, face = enroll_face(face_bytes)
-        if not template:
-            messages.error(request, f'Face capture could not be processed: {face.message} Please capture again.')
-            return redirect('enrollment')
-
-        profile, _ = BiometricProfile.objects.get_or_create(student=selected_student)
-        reference, fp = enroll_fingerprint(selected_student)
-        profile.fingerprint_reference = reference
-        profile.facial_template = template
-        profile.enrollment_status = 'enrolled'
-        profile.enrollment_date = timezone.now()
-        profile.save()
-        AuditLog.objects.create(
-            user=request.user,
-            action='biometric_enrollment',
-            description=f'Biometric prototype enrollment updated for {selected_student.admission_number}; student and separate face consent confirmed. Encrypted facial template stored; original face photograph discarded.',
-        )
-        messages.success(request, f'Enrollment record saved for {selected_student.full_name}. {fp.message} {face.message}')
-        return redirect('enrollment')
-
-    context = {
-        'student': own_student,
-        'selected_student': selected_student,
-        'profile': getattr(selected_student, 'biometric_profile', None) if selected_student else None,
-        'students': Student.objects.order_by('full_name') if request.user.role == 'admin' else [],
-    }
-    return render(request, 'biometrics/enrollment.html', context)
-
-@role_required('admin','invigilator')
+@role_required('admin', 'invigilator')
 def verification(request):
     examinations = Examination.objects.filter(status=Examination.Status.ACTIVE).order_by('examination_date', 'start_time')
-    students = Student.objects.select_related('user').order_by('full_name')
+    if request.user.role == 'invigilator' and not request.user.is_superuser:
+        invigilator = getattr(request.user, 'invigilator_profile', None)
+        if invigilator is None:
+            raise Http404
+        examinations = examinations.filter(invigilators=invigilator)
+
     if request.method == 'POST':
         examination = get_object_or_404(examinations, pk=request.POST.get('examination'))
-        student = get_object_or_404(students, admission_number=request.POST.get('admission_number', '').strip())
-        profile = getattr(student, 'biometric_profile', None)
-        if not profile:
-            messages.error(request, 'This student has no biometric enrollment. Complete enrollment before verification.')
-            return redirect('verification')
-        data_url = request.POST.get('face_data', '')
-        try:
-            header, encoded = data_url.split(',', 1)
-            if header != 'data:image/jpeg;base64' or len(encoded) > 5 * 1024 * 1024:
-                raise ValueError('Unsupported or oversized image.')
-            face_bytes = base64.b64decode(encoded, validate=True)
-        except (ValueError, TypeError):
-            face_bytes = b''
-        from .services.verification_service import verify as verify_biometrics
-        result = verify_biometrics(profile, profile.facial_template, face_bytes=face_bytes)
-        VerificationLog.objects.create(
-            student=student,
+        if request.user.role == 'invigilator' and not request.user.is_superuser:
+            if not examination.invigilators.filter(user=request.user).exists():
+                raise Http404
+        registration = get_object_or_404(
+            ExaminationRegistration.objects.select_related('student'),
             examination=examination,
-            fingerprint_result=result['fingerprint_result'],
-            facial_result=result['facial_result'],
-            overall_result=result['overall_result'],
-            reviewing_invigilator=getattr(request.user, 'invigilator_profile', None),
+            student__admission_number=request.POST.get('admission_number', '').strip(),
         )
-        if result['overall_result'] == 'verified':
-            from .services.attendance_service import record
-            record(student, examination, status=Attendance.Status.PRESENT, method='simulated_fingerprint+face_prototype')
-            AuditLog.objects.create(user=request.user, action='attendance_verified', description=f'Prototype verification passed for {student.admission_number} in {examination.code}.')
-            messages.success(request, 'Both prototype checks matched. Attendance was recorded; this is not a production biometric identity decision.')
+        student = registration.student
+        document_type = request.POST.get('document_type', '')
+        outcome = request.POST.get('outcome', '')
+        notes = request.POST.get('notes', '').strip()
+        if document_type not in IdentityVerification.DocumentType.values:
+            messages.error(request, 'Select the identity document or institutional record checked.')
+            return redirect('verification')
+        if outcome not in IdentityVerification.Outcome.values:
+            messages.error(request, 'Select the staff verification outcome.')
+            return redirect('verification')
+        if not notes:
+            messages.error(request, 'Record factual notes about the identity check before saving.')
+            return redirect('verification')
+
+        check = IdentityVerification.objects.create(
+            student=student, examination=examination, checked_by=request.user,
+            document_type=document_type, outcome=outcome, notes=notes,
+        )
+        from .services.attendance_service import record
+        if outcome == IdentityVerification.Outcome.VERIFIED:
+            record(student, examination, status=Attendance.Status.PRESENT, method='staff_identity_check')
+            action = 'identity_manually_verified'
+            messages.success(request, f'Identity check recorded for {student.admission_number}. Attendance was recorded by the staff member who completed the check.')
         else:
+            record(student, examination, status=Attendance.Status.MANUAL, method='staff_identity_check_pending')
             ManualReview.objects.get_or_create(
-                student=student,
-                examination=examination,
-                decision='pending',
-                defaults={'reason': f"Prototype verification requires human review. Fingerprint: {result['fingerprint_result']}; face: {result['facial_result']}."},
+                student=student, examination=examination, decision='pending',
+                defaults={'reason': f'Staff identity check outcome: {check.get_outcome_display()}. {notes}'},
             )
-            AuditLog.objects.create(user=request.user, action='verification_referred', description=f'Prototype biometric check referred for human review: {student.admission_number} in {examination.code}. Fingerprint result: {result["fingerprint_result"]}; face result: {result["facial_result"]}.')
-            messages.warning(request, 'The result was not fully conclusive. It has been referred for human review; no verified attendance was recorded.')
+            action = 'identity_check_referred'
+            messages.warning(request, 'The identity check was not cleared. The record has been sent for a second human review; no attendance confirmation or misconduct finding was made.')
+
+        AuditLog.objects.create(
+            user=request.user, action=action,
+            description=f'{check.get_outcome_display()} for {student.admission_number} in {examination.code}. Document checked: {check.get_document_type_display()}. Notes: {notes}',
+        )
         return redirect('verification')
-    return render(request, 'biometrics/verification.html', {'examinations': examinations, 'students': students})
+
+    students = Student.objects.filter(exam_registrations__examination__in=examinations).distinct().order_by('full_name')
+    return render(request, 'verification/desk.html', {
+        'examinations': examinations, 'students': students,
+        'document_types': IdentityVerification.DocumentType.choices,
+        'outcomes': IdentityVerification.Outcome.choices,
+    })
 
 @role_required('admin','invigilator')
 def review_queue(request):
@@ -282,7 +215,7 @@ def reports(request):
         'manual': Attendance.objects.filter(attendance_status=Attendance.Status.MANUAL).count(),
         'absent': Attendance.objects.filter(attendance_status=Attendance.Status.ABSENT).count(),
         'reviews': ManualReview.objects.filter(decision='pending').count(),
-        'verification_logs': VerificationLog.objects.select_related('student', 'examination').order_by('-timestamp')[:10],
+        'identity_checks': IdentityVerification.objects.select_related('student', 'examination', 'checked_by').order_by('-checked_at')[:10],
         'recent_activity': AuditLog.objects.select_related('user').order_by('-timestamp')[:10],
     }
     return render(request, 'reports/reports_dashboard.html', context)
