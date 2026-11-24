@@ -1,6 +1,6 @@
 # R6 Workflow Implementation Status
 
-## Implemented in this branch
+## Implemented in the repository
 
 - Persisted incident cases linked to the student, examination, creating user,
   and assigned invigilator.
@@ -38,7 +38,7 @@
   or formal records management.
 - R3/R4 and R5 require policy-owner clarification before those rows can be
   safely automated.
-- The feature branch has not been merged or deployed to the production site.
+- The incident workflow and migration are present in the audited repository revision. Whether the migration has been applied to the current production database and whether this exact revision is deployed must be verified separately.
 
 ## Verification
 
@@ -47,6 +47,4 @@ The GitHub Actions workflow runs:
 - `python manage.py makemigrations --check --dry-run`
 - `python manage.py test`
 
-A successful run is required before the branch is ready for review. Do not
-apply the new migration to the production database until the PR has been
-reviewed and the deployment plan is approved.
+A successful CI run is required before release. Confirm that migration 0004 is applied to the persistent production database as part of an approved deployment plan; never assume that a repository migration has automatically run in production.
