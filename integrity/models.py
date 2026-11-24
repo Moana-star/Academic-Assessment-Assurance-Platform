@@ -97,6 +97,34 @@ class VerificationLog(models.Model):
     reviewing_invigilator = models.ForeignKey(Invigilator, null=True, blank=True, on_delete=models.SET_NULL)
 
 
+class IdentityVerification(models.Model):
+    class DocumentType(models.TextChoices):
+        STUDENT_CARD = 'student_card', 'Institutional student card'
+        NATIONAL_ID = 'national_id', 'National identity document'
+        PASSPORT = 'passport', 'Passport'
+        INSTITUTIONAL_RECORD = 'institutional_record', 'Approved institutional record'
+        OTHER = 'other', 'Other approved document'
+
+    class Outcome(models.TextChoices):
+        VERIFIED = 'verified', 'Identity verified by staff'
+        REFERRED = 'referred', 'Referred for a second review'
+        NOT_VERIFIED = 'not_verified', 'Identity could not be verified'
+
+    student = models.ForeignKey(Student, on_delete=models.PROTECT, related_name='identity_verifications')
+    examination = models.ForeignKey(Examination, on_delete=models.PROTECT, related_name='identity_verifications')
+    checked_by = models.ForeignKey(User, on_delete=models.PROTECT, related_name='identity_verifications')
+    document_type = models.CharField(max_length=32, choices=DocumentType.choices)
+    outcome = models.CharField(max_length=24, choices=Outcome.choices)
+    notes = models.TextField()
+    checked_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-checked_at']
+
+    def __str__(self):
+        return f'{self.student.admission_number} — {self.examination.code} — {self.get_outcome_display()}'
+
+
 class ManualReview(models.Model):
     student = models.ForeignKey(Student, on_delete=models.CASCADE, related_name='manual_reviews')
     examination = models.ForeignKey(Examination, on_delete=models.CASCADE, related_name='manual_reviews')
