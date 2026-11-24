@@ -2,13 +2,31 @@ import os
 from pathlib import Path
 
 import dj_database_url
+from django.core.exceptions import ImproperlyConfigured
+from dotenv import load_dotenv
 
 BASE_DIR = Path(__file__).resolve().parent.parent
+load_dotenv(BASE_DIR / ".env")
 
-SECRET_KEY = os.getenv("DJANGO_SECRET_KEY", "academic-prototype-change-me")
+DEBUG = os.getenv("DJANGO_DEBUG", "False").lower() == "true"
+SECRET_KEY = os.getenv("DJANGO_SECRET_KEY", "").strip()
+if not SECRET_KEY:
+    if DEBUG:
+        SECRET_KEY = "local-development-only-not-for-production"
+    else:
+        raise ImproperlyConfigured(
+            "DJANGO_SECRET_KEY must be configured when DEBUG is False."
+        )
+if not DEBUG and (
+    SECRET_KEY.startswith("replace-with-")
+    or SECRET_KEY == "academic-prototype-change-me"
+):
+    raise ImproperlyConfigured(
+        "Replace the example Django secret with a unique production secret."
+    )
+
 BIOMETRIC_ENCRYPTION_KEY = os.getenv("BIOMETRIC_ENCRYPTION_KEY", "")
 ADMIN_BOOTSTRAP_TOKEN = os.getenv("ADMIN_BOOTSTRAP_TOKEN", "")
-DEBUG = os.getenv("DJANGO_DEBUG", "False").lower() == "true"
 
 ALLOWED_HOSTS = [
     host.strip()
