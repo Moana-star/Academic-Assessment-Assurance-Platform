@@ -46,6 +46,19 @@ class IntegrityCoreTests(TestCase):
         pending.refresh_from_db()
         self.assertTrue(pending.is_active)
 
+    def test_account_approval_rejects_get_requests(self):
+        admin = get_user_model().objects.create_user(
+            username='approval-admin', password='admin-pass-123', role='admin'
+        )
+        pending = get_user_model().objects.create_user(
+            username='pending-get', password='strong-pass-123', role='student', is_active=False
+        )
+        self.client.force_login(admin)
+        response = self.client.get(f'/accounts/{pending.pk}/approve/')
+        self.assertEqual(response.status_code, 405)
+        pending.refresh_from_db()
+        self.assertFalse(pending.is_active)
+
     def test_dashboard_requires_authentication(self):
         response = self.client.get('/')
         self.assertRedirects(response, '/login/?next=/')
