@@ -130,15 +130,15 @@ class IntegrityCoreTests(TestCase):
         self.assertNotIn(plain, encrypted)
         self.assertEqual(_decrypt_template(encrypted), plain)
 
-    def test_student_can_enroll_fingerprint_without_face_capture(self):
+    def test_student_enrollment_requires_separate_face_consent(self):
         self.client.force_login(self.student.user)
-        response = self.client.post('/biometrics/enroll/', {'student_consent': 'yes', 'fingerprint_consent': 'yes'})
+        response = self.client.post('/biometrics/enroll/', {
+            'student_consent': 'yes',
+            'fingerprint_consent': 'yes',
+        })
         self.assertRedirects(response, '/biometrics/enroll/')
-        profile = BiometricProfile.objects.get(student=self.student)
-        self.assertTrue(profile.fingerprint_reference)
-        self.assertEqual(profile.enrollment_status, 'fingerprint_only')
-        self.assertIsNotNone(profile.enrollment_date)
-        self.assertTrue(AuditLog.objects.filter(action='biometric_enrollment').exists())
+        self.assertFalse(BiometricProfile.objects.filter(student=self.student).exists())
+        self.assertFalse(AuditLog.objects.filter(action='biometric_enrollment').exists())
 
     def test_enrollment_requires_student_consent(self):
         self.client.force_login(self.student.user)
@@ -167,15 +167,15 @@ class IntegrityCoreTests(TestCase):
         self.assertEqual(log.overall_result, 'manual_review')
         self.assertFalse(Attendance.objects.filter(student=self.student, examination=self.exam, attendance_status=Attendance.Status.PRESENT).exists())
 
-    def test_admin_can_enroll_selected_student_fingerprint(self):
+    def test_admin_enrollment_requires_face_capture_even_when_consents_are_given(self):
         admin = get_user_model().objects.create_user(username='biometric-admin', password='admin-pass-123', role='admin')
         self.client.force_login(admin)
         response = self.client.post('/biometrics/enroll/', {
             'student_id': self.student.pk,
             'student_consent': 'yes',
             'fingerprint_consent': 'yes',
+            'face_consent': 'yes',
         })
         self.assertRedirects(response, '/biometrics/enroll/')
-        profile = BiometricProfile.objects.get(student=self.student)
-        self.assertTrue(profile.fingerprint_reference)
-        self.assertEqual(profile.enrollment_status, 'fingerprint_only')
+        self.assertFalse(BiometricProfile.objects.filter(student=self.student).exists())
+        self.assertFalse(AuditLog.objects.filter(action='biometric_enrollment').exists())
