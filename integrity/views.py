@@ -93,9 +93,102 @@ def approve_account(request, user_id):
 
 @login_required
 def dashboard(request):
-    context = {'students_count': Student.objects.count(), 'exams_count': Examination.objects.count(), 'verified_count': Attendance.objects.filter(attendance_status='present').count(), 'reviews_count': ManualReview.objects.filter(decision='pending').count(), 'upcoming': Examination.objects.filter(examination_date__gte=timezone.localdate()).order_by('examination_date')[:5], 'recent_logs': VerificationLog.objects.select_related('student','examination').order_by('-timestamp')[:6], 'demo_data_present': Student.objects.filter(user__username__startswith='demo-student-').exists()}
-    if request.user.role == 'student': return render(request, 'dashboard/student_dashboard.html', context)
-    if request.user.role == 'invigilator': return render(request, 'dashboard/invigilator_dashboard.html', context)
+    today = timezone.localdate()
+
+    if request.user.role == User.Roles.STUDENT:
+        student = getattr(request.user, 'student_profile', None)
+        if student:
+            registered_exams = Examination.objects.filter(
+                registrations__student=student
+            ).distinct()
+            own_attendance = Attendance.objects.filter(student=student)
+            own_reviews = ManualReview.objects.filter(student=student)
+            context = {
+                'students_count': 1,
+                'exams_count': registered_exams.count(),
+                'verified_count': own_attendance.filter(
+                    attendance_status=Attendance.Status.PRESENT
+                ).count(),
+                'reviews_count': own_reviews.filter(decision='pending').count(),
+                'upcoming': registered_exams.filter(
+                    examination_date__gte=today
+                ).order_by('examination_date', 'start_time')[:5],
+                'recent_logs': VerificationLog.objects.filter(
+                    student=student
+                ).select_related('examination').order_by('-timestamp')[:6],
+                'demo_data_present': student.user.username.startswith('demo-student-'),
+            }
+        else:
+            context = {
+                'students_count': 0, 'exams_count': 0, 'verified_count': 0,
+                'reviews_count': 0, 'upcoming': [], 'recent_logs': [],
+                'demo_data_present': False,
+            }
+        return render(request, 'dashboard/student_dashboard.html', context)
+
+    if request.user.role == User.Roles.INVIGILATOR:
+        invigilator = getattr(request.user, 'invigilator_profile', None)
+        assigned_exams = (
+            invigilator.examinations.all() if invigilator
+            else Examination.objects.none()
+        )
+        assigned_attendance = Attendance.objects.filter(
+            examination__in=assigned_exams
+        )
+        assigned_reviews = ManualReview.objects.filter(
+            examination__in=assigned_exams
+        )
+        assigned_students = Student.objects.filter(
+            exam_registrations__examination__in=assigned_exams
+        ).distinct()
+        context = {
+            'students_count': assigned_students.count(),
+            'exams_count': assigned_exams.count(),
+            'verified_count': assigned_attendance.filter(
+                attendance_status=Attendance.Status.PRESENT
+            ).count(),
+            'reviews_count': assigned_reviews.filter(decision='pending').count(),
+            'upcoming': assigned_exams.filter(
+                examination_date__gte=today
+            ).order_by('examination_date', 'start_time')[:5],
+            'recent_logs': VerificationLog.objects.filter(
+                examination__in=assigned_exams
+            ).select_related('student', 'examination').order_by('-timestamp')[:6],
+            'demo_data_present': assigned_students.filter(
+                user__username__startswith='demo-student-'
+            ).exists(),
+        }
+        return render(request, 'dashboard/invigilator_dashboard.html', context)
+
+    if request.user.role == User.Roles.BOARD:
+        submitted_cases = IncidentCase.objects.filter(
+            status=IncidentCase.Status.SUBMITTED
+        ).select_related('student', 'examination', 'assigned_invigilator')
+        return render(request, 'dashboard/board_dashboard.html', {
+            'pending_cases_count': submitted_cases.count(),
+            'reviewed_cases_count': IncidentCase.objects.filter(
+                status=IncidentCase.Status.BOARD_REVIEWED
+            ).count(),
+            'recent_cases': submitted_cases.order_by('-updated_at')[:6],
+        })
+
+    context = {
+        'students_count': Student.objects.count(),
+        'exams_count': Examination.objects.count(),
+        'verified_count': Attendance.objects.filter(
+            attendance_status=Attendance.Status.PRESENT
+        ).count(),
+        'reviews_count': ManualReview.objects.filter(decision='pending').count(),
+        'upcoming': Examination.objects.filter(
+            examination_date__gte=today
+        ).order_by('examination_date', 'start_time')[:5],
+        'recent_logs': VerificationLog.objects.select_related(
+            'student', 'examination'
+        ).order_by('-timestamp')[:6],
+        'demo_data_present': Student.objects.filter(
+            user__username__startswith='demo-student-'
+        ).exists(),
+    }
     return render(request, 'dashboard/admin_dashboard.html', context)
 
 @role_required('admin')
