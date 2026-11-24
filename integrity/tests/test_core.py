@@ -1,7 +1,7 @@
 from datetime import date, time
 from django.contrib.auth import get_user_model
 from django.test import TestCase
-from integrity.models import Attendance, AuditLog, BiometricProfile, Examination, ManualReview, Student, VerificationLog
+from integrity.models import Attendance, AuditLog, BiometricProfile, Examination, ExaminationRegistration, Invigilator, ManualReview, Student, VerificationLog
 from integrity.services.verification_service import combine
 from integrity.services.attendance_service import record
 
@@ -49,6 +49,66 @@ class IntegrityCoreTests(TestCase):
     def test_dashboard_requires_authentication(self):
         response = self.client.get('/')
         self.assertRedirects(response, '/login/?next=/')
+
+    def test_student_dashboard_only_counts_their_own_registered_exams_and_attendance(self):
+        other_user = get_user_model().objects.create_user(username='other-student', password='test-pass-123', role='student')
+        other_student = Student.objects.create(
+            user=other_user, admission_number='A099', full_name='Other Student',
+            course='BSc', department='Computing',
+        )
+        other_exam = Examination.objects.create(
+            title='Other Systems', code='SYS099', course='BSc',
+            examination_date=date.today(), start_time=time(12), end_time=time(14),
+            venue='Hall B', status='active',
+        )
+        ExaminationRegistration.objects.create(student=self.student, examination=self.exam)
+        ExaminationRegistration.objects.create(student=other_student, examination=other_exam)
+        Attendance.objects.create(student=self.student, examination=self.exam, attendance_status=Attendance.Status.PRESENT)
+        Attendance.objects.create(student=other_student, examination=other_exam, attendance_status=Attendance.Status.PRESENT)
+
+        self.client.force_login(self.student.user)
+        response = self.client.get('/')
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.context['students_count'], 1)
+        self.assertEqual(response.context['exams_count'], 1)
+        self.assertEqual(response.context['verified_count'], 1)
+        self.assertEqual(list(response.context['upcoming']), [self.exam])
+
+    def test_invigilator_dashboard_only_counts_assigned_examinations(self):
+        invigilator_user = get_user_model().objects.create_user(
+            username='assigned-invigilator', password='test-pass-123', role='invigilator'
+        )
+        invigilator = Invigilator.objects.create(
+            user=invigilator_user, staff_number='INV-001',
+            full_name='Assigned Invigilator', department='Computing',
+        )
+        invigilator.examinations.add(self.exam)
+        other_exam = Examination.objects.create(
+            title='Unassigned Systems', code='SYS098', course='BSc',
+            examination_date=date.today(), start_time=time(12), end_time=time(14),
+            venue='Hall C', status='active',
+        )
+        Attendance.objects.create(student=self.student, examination=self.exam, attendance_status=Attendance.Status.PRESENT)
+        Attendance.objects.create(student=self.student, examination=other_exam, attendance_status=Attendance.Status.PRESENT)
+
+        self.client.force_login(invigilator_user)
+        response = self.client.get('/')
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.context['exams_count'], 1)
+        self.assertEqual(response.context['verified_count'], 1)
+        self.assertEqual(list(response.context['upcoming']), [self.exam])
+
+    def test_board_role_receives_board_dashboard_not_administrator_dashboard(self):
+        board_user = get_user_model().objects.create_user(
+            username='board-user', password='test-pass-123', role='board'
+        )
+        self.client.force_login(board_user)
+        response = self.client.get('/')
+        self.assertEqual(response.status_code, 200)
+        self.assertTemplateUsed(response, 'dashboard/board_dashboard.html')
+        self.assertNotIn('students_count', response.context)
 
     def test_admin_dashboard_counts_saved_records(self):
         admin = get_user_model().objects.create_user(username='admin-dashboard', password='admin-pass-123', role='admin', is_staff=True)
