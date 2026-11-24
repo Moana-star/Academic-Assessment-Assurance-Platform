@@ -1,0 +1,51 @@
+{% extends 'base.html' %}
+{% block title %}Identity verification · Academic Assessment Assurance{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <p class="eyebrow">Staff-controlled examination process</p>
+    <h1>Identity verification</h1>
+    <p>Check the candidate's approved identity document against the examination registration. This workflow records the staff member's decision; it does not use face recognition or simulated fingerprint scans.</p>
+  </div>
+  <span class="pill">Human verification</span>
+</div>
+<div class="notice"><strong>Before you begin:</strong> Ask the candidate to present their original institutional student card or another approved identity document. Compare the name and photograph with the institution's authorised record. Do not photograph, upload, or store identity documents in this system.</div>
+<section class="panel">
+  <h2>Record an identity check</h2>
+  {% if examinations and students %}
+  <form method="post">
+    {% csrf_token %}
+    <p><label for="examination">Active examination</label>
+      <select name="examination" id="examination" required>
+        <option value="">Select examination</option>
+        {% for exam in examinations %}<option value="{{ exam.pk }}">{{ exam.code }} — {{ exam.title }} · {{ exam.venue }}</option>{% endfor %}
+      </select>
+    </p>
+    <p><label for="admission-number">Registered student</label>
+      <select name="admission_number" id="admission-number" required>
+        <option value="">Select registered student</option>
+        {% for student in students %}<option value="{{ student.admission_number }}">{{ student.admission_number }} — {{ student.full_name }}</option>{% endfor %}
+      </select>
+    </p>
+    <p><label for="document-type">Identity document checked</label>
+      <select name="document_type" id="document-type" required>
+        <option value="">Select document</option>
+        {% for value,label in document_types %}<option value="{{ value }}">{{ label }}</option>{% endfor %}
+      </select>
+    </p>
+    <p><label for="outcome">Staff verification outcome</label>
+      <select name="outcome" id="outcome" required>
+        <option value="">Select outcome</option>
+        {% for value,label in outcomes %}<option value="{{ value }}">{{ label }}</option>{% endfor %}
+      </select>
+    </p>
+    <p><label for="notes">Factual notes (required)</label>
+      <textarea name="notes" id="notes" rows="4" required maxlength="4000" placeholder="Record what you checked and the factual reason for the outcome. Do not enter full identity-document numbers or unnecessary sensitive information."></textarea>
+    </p>
+    <button class="button" type="submit">Save identity check</button>
+  </form>
+  {% else %}
+  <div class="empty-state">No registered students are available for an active examination assigned to you. Ask an administrator to confirm the examination schedule, student registrations and invigilator assignment.</div>
+  {% endif %}
+</section>
+{% endblock %}
