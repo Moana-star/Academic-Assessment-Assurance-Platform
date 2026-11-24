@@ -10,7 +10,7 @@ class PlatformUserAdmin(UserAdmin):
     add_fieldsets = UserAdmin.add_fieldsets + (
         (None, {'classes': ('wide',), 'fields': ('role',)}),
     )
-admin.site.register([Student, Invigilator, Examination, ExaminationRegistration, Attendance, VerificationLog, ManualReview, AuditLog, IncidentCase])
+admin.site.register([Student, Invigilator, Examination, ExaminationRegistration, Attendance, ManualReview, AuditLog, IncidentCase])
 # Legacy biometric records are intentionally not exposed in the application admin.
 
 @admin.register(IncidentAuditEvent)
