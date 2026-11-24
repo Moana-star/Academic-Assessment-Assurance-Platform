@@ -366,3 +366,40 @@ video { width: 100%; background: var(--plum); border-radius: 8px; min-height: 22
     padding: 8px 10px;
   }
 }
+
+
+/* Desktop sidebar: keep account actions visible while long navigation scrolls */
+@media (min-width: 801px) {
+  aside {
+    height: 100vh;
+    height: 100dvh;
+    overflow: hidden;
+  }
+  aside nav,
+  aside nav#mobile-navigation {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-x: hidden;
+    overflow-y: auto;
+    overscroll-behavior-y: contain;
+    scrollbar-width: thin;
+    scrollbar-color: #8B687D #463441;
+    align-content: start;
+    padding: 0 4px 12px 0;
+    margin-top: 34px;
+  }
+  aside nav::-webkit-scrollbar { width: 7px; }
+  aside nav::-webkit-scrollbar-track { background: #463441; border-radius: 8px; }
+  aside nav::-webkit-scrollbar-thumb { background: #8B687D; border-radius: 8px; }
+  aside .user {
+    flex: 0 0 auto;
+    margin-top: 12px;
+    padding-top: 14px;
+  }
+  aside .logout-form,
+  aside .logout-button {
+    display: block;
+    visibility: visible;
+    opacity: 1;
+  }
+}
