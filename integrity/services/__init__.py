@@ -1,1 +1,1 @@
-"""Domain services for biometrics, verification, and attendance."""
+"""Domain services for attendance and human-reviewed examination workflows."""
