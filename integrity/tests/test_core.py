@@ -167,6 +167,31 @@ class IntegrityCoreTests(TestCase):
         self.assertEqual(log.overall_result, 'manual_review')
         self.assertFalse(Attendance.objects.filter(student=self.student, examination=self.exam, attendance_status=Attendance.Status.PRESENT).exists())
 
+    def test_even_a_future_verified_adapter_result_requires_human_review(self):
+        from unittest.mock import patch
+        admin = get_user_model().objects.create_user(username='future-adapter-admin', password='admin-pass-123', role='admin')
+        BiometricProfile.objects.create(student=self.student, fingerprint_reference='SIMULATION-NOT-A-BIOMETRIC')
+        self.client.force_login(admin)
+        mocked_result = {
+            'fingerprint_result': 'match',
+            'facial_result': 'match',
+            'overall_result': 'verified',
+        }
+        with patch('integrity.services.verification_service.verify', return_value=mocked_result):
+            response = self.client.post('/biometrics/verify/', {
+                'examination': self.exam.pk,
+                'admission_number': self.student.admission_number,
+                'face_data': '',
+            })
+        self.assertRedirects(response, '/biometrics/verify/')
+        self.assertEqual(VerificationLog.objects.get().overall_result, 'verified')
+        self.assertTrue(ManualReview.objects.filter(student=self.student, examination=self.exam, decision='pending').exists())
+        self.assertFalse(Attendance.objects.filter(
+            student=self.student,
+            examination=self.exam,
+            attendance_status=Attendance.Status.PRESENT,
+        ).exists())
+
     def test_admin_enrollment_requires_face_capture_even_when_consents_are_given(self):
         admin = get_user_model().objects.create_user(username='biometric-admin', password='admin-pass-123', role='admin')
         self.client.force_login(admin)
