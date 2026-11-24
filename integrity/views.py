@@ -201,7 +201,7 @@ def review_queue(request):
         messages.success(request, 'Human review decision saved and added to the audit trail.')
         return redirect('review_queue')
     reviews = ManualReview.objects.filter(decision='pending').select_related('student', 'examination').order_by('timestamp')
-    return render(request, 'biometrics/review_queue.html', {'reviews': reviews})
+    return render(request, 'reviews/review_queue.html', {'reviews': reviews})
 
 
 @role_required('admin','invigilator')
