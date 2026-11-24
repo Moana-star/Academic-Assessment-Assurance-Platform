@@ -39,30 +39,42 @@
       <h2>Fingerprint enrollment</h2>
       <p>Prototype only: this creates a placeholder reference. No physical scanner is connected, and this is not fingerprint recognition.</p>
       <style>
-        .fingerprint-scanner { display:grid; justify-items:center; gap:12px; padding:20px 12px; margin:18px 0; border:1px solid var(--border, #dbe3ee); border-radius:16px; background:var(--surface-soft, rgba(100,116,139,.06)); text-align:center; }
-        .fingerprint-mark { display:grid; place-items:center; width:112px; height:112px; border:2px solid var(--border, #94a3b8); border-radius:50%; font-size:58px; line-height:1; background:var(--surface, #fff); }
-        .fingerprint-scanner.is-scanning .fingerprint-mark { border-color:#2563eb; box-shadow:0 0 0 7px rgba(37,99,235,.10); animation:fingerprint-pulse 1s ease-in-out infinite; }
-        .fingerprint-scanner.is-success .fingerprint-mark { border-color:#16a34a; box-shadow:0 0 0 7px rgba(22,163,74,.10); }
-        .fingerprint-progress { width:min(100%, 280px); height:9px; overflow:hidden; border-radius:99px; background:rgba(100,116,139,.2); }
-        .fingerprint-progress > span { display:block; width:0; height:100%; border-radius:inherit; background:#2563eb; transition:width .12s linear; }
+        .fingerprint-scanner { display:grid; justify-items:center; gap:13px; padding:22px 14px; margin:18px 0; border:1px solid var(--border, #dbe3ee); border-radius:18px; background:var(--surface-soft, rgba(100,116,139,.06)); text-align:center; }
+        .fingerprint-ring { --fingerprint-progress:0%; display:grid; place-items:center; width:150px; height:150px; border-radius:50%; background:conic-gradient(#2563eb var(--fingerprint-progress), rgba(100,116,139,.18) 0); transition:background .25s ease; }
+        .fingerprint-ring-inner { display:grid; place-items:center; align-content:center; gap:3px; width:126px; height:126px; border-radius:50%; background:var(--surface, #fff); border:1px solid var(--border, #dbe3ee); }
+        .fingerprint-mark { font-size:48px; line-height:1.1; }
+        .fingerprint-ring-inner strong { font-size:18px; }
+        .fingerprint-scanner.is-scanning .fingerprint-ring { animation:fingerprint-pulse 1.2s ease-in-out infinite; }
+        .fingerprint-scanner.is-success .fingerprint-ring { background:conic-gradient(#16a34a 100%, #16a34a 0); }
+        .fingerprint-progress { width:min(100%, 280px); height:8px; overflow:hidden; border-radius:99px; background:rgba(100,116,139,.2); }
+        .fingerprint-progress > span { display:block; width:0; height:100%; border-radius:inherit; background:#2563eb; transition:width .2s ease; }
         .fingerprint-scanner.is-success .fingerprint-progress > span { background:#16a34a; }
-        @keyframes fingerprint-pulse { 50% { transform:scale(1.045); opacity:.72; } }
-        @media (prefers-reduced-motion: reduce) { .fingerprint-scanner.is-scanning .fingerprint-mark { animation:none; } }
+        .fingerprint-touch-hint { max-width:340px; }
+        @keyframes fingerprint-pulse { 50% { transform:scale(1.025); } }
+        @media (prefers-reduced-motion: reduce) { .fingerprint-scanner.is-scanning .fingerprint-ring { animation:none; } }
       </style>
       <div class="fingerprint-scanner" id="fingerprint-scanner" aria-live="polite">
-        <div class="fingerprint-mark" aria-hidden="true">🫆</div>
-        <strong id="fingerprint-scan-label">Ready to scan</strong>
-        <div class="fingerprint-progress" role="progressbar" aria-label="Simulated fingerprint scan progress" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
-          <span id="fingerprint-progress-fill"></span>
+        <div class="fingerprint-ring" id="fingerprint-ring" role="progressbar" aria-label="Fingerprint enrollment progress" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
+          <div class="fingerprint-ring-inner">
+            <span class="fingerprint-mark" aria-hidden="true">🫆</span>
+            <strong id="fingerprint-progress-text">0%</strong>
+            <small>complete</small>
+          </div>
         </div>
-        <small id="fingerprint-progress-text">0% complete</small>
+        <strong id="fingerprint-scan-label">Ready to enroll</strong>
+        <p class="fingerprint-touch-hint" id="fingerprint-touch-hint">Start enrollment, then place and lift your finger each time the screen prompts you. Repeat until the circle is full.</p>
+        <div class="fingerprint-progress" aria-hidden="true"><span id="fingerprint-progress-fill"></span></div>
+        <small id="fingerprint-touch-count">0 of 5 touches</small>
         <span class="pill">SIMULATION MODE · NO HARDWARE CONNECTED</span>
       </div>
       <p class="status" id="fingerprint-status" role="status">
         Current status: {{ profile.enrollment_status|default:'Not enrolled' }}. This demo does not read or store a fingerprint image.
       </p>
       <input type="hidden" name="fingerprint_consent" id="fingerprint-consent" value="">
-      <button type="button" class="button" id="start-fingerprint" {% if user.role == 'admin' and not students or user.role != 'admin' and not student %}disabled{% endif %}>Start fingerprint scan</button>
+      <div class="button-row">
+        <button type="button" class="button" id="start-fingerprint" {% if user.role == 'admin' and not students or user.role != 'admin' and not student %}disabled{% endif %}>Start fingerprint enrollment</button>
+        <button type="button" class="button secondary" id="fingerprint-touch" disabled>Touch sensor</button>
+      </div>
       {% if profile.fingerprint_reference %}
         <p class="caption">A simulated placeholder reference is already saved. It is not a real fingerprint template.</p>
       {% endif %}
