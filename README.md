@@ -1,64 +1,44 @@
 # Academic Assessment Assurance Platform
 
-An academic prototype for examination identity verification, attendance management, and invigilator review.
+A Django-based examination administration system for controlled student registration, staff-led identity checks, attendance, incident documentation, human review, board decisions, reporting, and audit history.
 
-## Project overview
+## Core workflows
 
-The Academic Assessment Assurance Platform supports accountable examination administration through role-based access, student and invigilator records, examination registration, supervised verification workflows, attendance tracking, audit history, and human review of uncertain outcomes.
+- Role-based access for administrators, invigilators, students, and board reviewers.
+- Student, invigilator, examination, and examination-registration records.
+- Staff-led identity verification: an authorised invigilator checks an original institutional student card or another approved document against the student's examination registration.
+- Attendance is recorded only after a staff member explicitly records a verified identity check. Uncertain or unsuccessful checks are referred for a second human review; they are not automatically treated as absence or misconduct.
+- Manual review decisions require written reasons and are recorded in the audit history.
+- Incident records support discreet checks, factual observations, student responses, formal report submission, and board outcomes.
+- Reports are calculated from saved attendance, identity-check, review, and audit records.
 
-Biometric and operational signals are decision-support cues, not proof of misconduct. Automated rules must never issue disciplinary decisions.
+## Identity verification and privacy
 
-## Diagram-aligned documentation
+- Simulated fingerprint scans, face capture, facial-template processing, and prototype biometric matching have been removed from the active application workflow.
+- The application does not claim to perform biometric identity recognition.
+- Staff must inspect the original document in person and compare it with authorised institutional records.
+- Do not upload or store identity-document photographs or full document numbers in the application. Record only the document type and the minimum factual notes required for accountability.
+- A failed or uncertain identity check is not proof of cheating, fraud, or absence.
+- Historical biometric database tables are retained for migration compatibility and preservation of existing records; the application no longer creates or uses new biometric profiles or verification results.
 
-- [Architecture notes](docs/ARCHITECTURE.md)
-- [AIEMS context, requirements, and diagram specification](docs/AIEMS_DIAGRAM_SPECIFICATION.md)
-- [Deterministic decision table](docs/DECISION_TABLE.md)
-- [R6 workflow and governance controls](docs/WORKFLOW_AND_GOVERNANCE.md)
-- [API contract](docs/API_CONTRACT.md)
-- [Development plan](docs/DEVELOPMENT_PLAN.md)
-- [Development guide](docs/CONTRIBUTING.md)
-- [Demonstration data setup](docs/DEMO_DATA.md)
+## Incident governance
+
+- Rule-based cues are decision-support only and never establish misconduct.
+- Approved accommodations take precedence over escalation.
+- Partial or transient cues remain unresolved.
+- Human review, student response, documented reasons, and board-level outcomes are separate workflow steps.
+- Incident audit events are append-only at the application layer; this is not an externally immutable ledger.
+
+## Known integration boundaries
+
+The repository does not include an institutional student-information-system connector, room-sensor gateway, BLE/Wi-Fi ingestion, posture analytics, real-time alert delivery, or an externally immutable audit store. These must not be represented as implemented capabilities.
 
 ## Technology
 
 - Python and Django
 - Django templates, HTML, CSS, and vanilla JavaScript
 - SQLite for local development; PostgreSQL when DATABASE_URL is configured
-- OpenCV educational face-processing adapter
 - Git and GitHub
-
-## Core capabilities
-
-- Administrator, invigilator, and student roles
-- Student, examination, and registration records
-- Prototype biometric enrollment and supervised verification
-- Attendance recording and duplicate-safe constraints
-- Manual review queue and audit history
-- Persisted incident cases, discreet invigilator verification, benign closure, formal report drafting/submission, and a dedicated board outcome workflow
-- Deterministic AIEMS triage for unambiguous R1, R2, and R6 patterns; unresolved R3/R4/R5 inputs are deliberately not escalated automatically
-
-## Prototype boundaries
-
-The repository does not yet include a production SIS connector, room-sensor gateway, BLE/Wi-Fi ingestion, posture analytics, real-time alert delivery, certified biometric recognition, or an externally immutable audit store. Incident indicators are currently entered by authorized staff; the new audit history is append-only at the application layer, not a tamper-proof external ledger. These are documented integration targets, not completed features. Do not represent them as deployed capabilities.
-
-## Safety and privacy
-
-- A sensor or biometric mismatch is not proof of cheating.
-- Approved accommodations take precedence over alert escalation.
-- Partial or transient cues remain low priority.
-- High-priority cues request discreet human verification.
-- Students must receive transparency, an opportunity to respond, and an appeal route.
-- Use synthetic records and consenting test participants only.
-- Never commit credentials, raw biometrics, real student photographs, private records, or local databases.
-
-## Biometric security and integration status
-
-- Facial templates are encrypted before database storage using Fernet. Set a dedicated `BIOMETRIC_ENCRYPTION_KEY` in the deployment environment; generate it with `python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"` and keep it stable and private. A key derived from `DJANGO_SECRET_KEY` is used only as a fallback.
-- Existing legacy face templates remain readable for compatibility and are replaced with encrypted templates on the next successful face enrollment. Back up the database and preserve the encryption key before rotating secrets.
-- The browser camera image is processed in memory; the original capture is not stored. The encrypted template is the only face-derived value retained.
-- Student consent is required for enrollment, with separate consent for face processing. Enrollment and verification actions are written to the audit log.
-- Fingerprint capture remains a placeholder until a physical scanner, vendor SDK, and trusted server-side adapter are selected. The prototype fingerprint check returns `unavailable`; the lightweight OpenCV face comparison cannot approve attendance. Prototype verification always goes to human review.
-- Biometric profiles are excluded from the general Django admin listing. Production use still requires a privacy impact assessment, institutional policy approval, retention/deletion rules, independent security review, and validated hardware/biometric algorithms.
 
 ## Local development
 
@@ -66,7 +46,7 @@ Run from the repository root in PowerShell:
 
 ```powershell
 py -m venv .venv
-.\\.venv\\Scripts\\Activate.ps1
+.\.venv\Scripts\Activate.ps1
 pip install -r requirements.txt
 Copy-Item .env.example .env
 python manage.py migrate
@@ -78,6 +58,7 @@ Run checks and tests:
 
 ```powershell
 python manage.py check
+python manage.py makemigrations --check
 python manage.py test
 ```
 
