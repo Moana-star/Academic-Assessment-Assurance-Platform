@@ -4,12 +4,6 @@ Django>=5.2,<6.0
 # Image upload handling
 Pillow>=10.0
 
-# Headless OpenCV avoids GUI/X11 libraries unavailable in serverless runtimes
-opencv-python-headless==4.11.0.86
-
 # Parse DATABASE_URL and connect to managed PostgreSQL
 dj-database-url>=2.3,<3.0
 psycopg[binary]>=3.2,<4.0
-
-# Encrypt biometric templates before database storage
-cryptography>=44.0
