@@ -92,6 +92,7 @@ def pending_accounts(request):
     return render(request, 'accounts/pending.html', {'pending_accounts': pending})
 
 @role_required('admin')
+@require_POST
 def approve_account(request, user_id):
     user = get_object_or_404(User, pk=user_id, is_active=False)
     if request.method == 'POST':
