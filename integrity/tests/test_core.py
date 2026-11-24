@@ -110,6 +110,63 @@ class IntegrityCoreTests(TestCase):
         self.assertTemplateUsed(response, 'dashboard/board_dashboard.html')
         self.assertNotIn('students_count', response.context)
 
+    def test_invigilator_cannot_clear_a_review_for_an_unassigned_examination(self):
+        invigilator_user = get_user_model().objects.create_user(
+            username='reviewing-invigilator', password='test-pass-123', role='invigilator'
+        )
+        invigilator = Invigilator.objects.create(
+            user=invigilator_user, staff_number='INV-002',
+            full_name='Reviewing Invigilator', department='Computing',
+        )
+        invigilator.examinations.add(self.exam)
+        other_exam = Examination.objects.create(
+            title='Unassigned Review', code='SYS097', course='BSc',
+            examination_date=date.today(), start_time=time(12), end_time=time(14),
+            venue='Hall D', status='active',
+        )
+        review = ManualReview.objects.create(
+            student=self.student, examination=other_exam, reason='Restricted review'
+        )
+        self.client.force_login(invigilator_user)
+        response = self.client.post('/reviews/', {
+            'review_id': review.pk,
+            'decision': 'cleared',
+            'notes': 'Attempted cross-examination review.',
+        })
+        self.assertEqual(response.status_code, 404)
+        review.refresh_from_db()
+        self.assertEqual(review.decision, 'pending')
+        self.assertFalse(Attendance.objects.filter(
+            student=self.student,
+            examination=other_exam,
+            attendance_status=Attendance.Status.PRESENT,
+        ).exists())
+
+    def test_invigilator_attendance_list_excludes_unassigned_examinations(self):
+        invigilator_user = get_user_model().objects.create_user(
+            username='attendance-invigilator', password='test-pass-123', role='invigilator'
+        )
+        invigilator = Invigilator.objects.create(
+            user=invigilator_user, staff_number='INV-003',
+            full_name='Attendance Invigilator', department='Computing',
+        )
+        invigilator.examinations.add(self.exam)
+        other_exam = Examination.objects.create(
+            title='Unassigned Attendance', code='SYS096', course='BSc',
+            examination_date=date.today(), start_time=time(12), end_time=time(14),
+            venue='Hall E', status='active',
+        )
+        own_record = Attendance.objects.create(
+            student=self.student, examination=self.exam, attendance_status=Attendance.Status.PRESENT
+        )
+        Attendance.objects.create(
+            student=self.student, examination=other_exam, attendance_status=Attendance.Status.PRESENT
+        )
+        self.client.force_login(invigilator_user)
+        response = self.client.get('/attendance/')
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(list(response.context['records']), [own_record])
+
     def test_admin_dashboard_counts_saved_records(self):
         admin = get_user_model().objects.create_user(username='admin-dashboard', password='admin-pass-123', role='admin', is_staff=True)
         self.client.force_login(admin)
