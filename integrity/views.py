@@ -22,6 +22,15 @@ from .services.human_verification import CaseStatus, WorkflowError, transition_c
 
 User = get_user_model()
 
+
+def _assigned_examinations(user):
+    if user.is_superuser or user.role == User.Roles.ADMIN:
+        return Examination.objects.all()
+    if user.role == User.Roles.INVIGILATOR:
+        profile = getattr(user, 'invigilator_profile', None)
+        return profile.examinations.all() if profile else Examination.objects.none()
+    return Examination.objects.none()
+
 def register(request):
     if request.user.is_authenticated: return redirect('dashboard')
     form = RegistrationForm(request.POST or None)
@@ -83,6 +92,7 @@ def pending_accounts(request):
     return render(request, 'accounts/pending.html', {'pending_accounts': pending})
 
 @role_required('admin')
+@require_POST
 def approve_account(request, user_id):
     user = get_object_or_404(User, pk=user_id, is_active=False)
     if request.method == 'POST':
@@ -93,9 +103,102 @@ def approve_account(request, user_id):
 
 @login_required
 def dashboard(request):
-    context = {'students_count': Student.objects.count(), 'exams_count': Examination.objects.count(), 'verified_count': Attendance.objects.filter(attendance_status='present').count(), 'reviews_count': ManualReview.objects.filter(decision='pending').count(), 'upcoming': Examination.objects.filter(examination_date__gte=timezone.localdate()).order_by('examination_date')[:5], 'recent_logs': VerificationLog.objects.select_related('student','examination').order_by('-timestamp')[:6], 'demo_data_present': Student.objects.filter(user__username__startswith='demo-student-').exists()}
-    if request.user.role == 'student': return render(request, 'dashboard/student_dashboard.html', context)
-    if request.user.role == 'invigilator': return render(request, 'dashboard/invigilator_dashboard.html', context)
+    today = timezone.localdate()
+
+    if request.user.role == User.Roles.STUDENT:
+        student = getattr(request.user, 'student_profile', None)
+        if student:
+            registered_exams = Examination.objects.filter(
+                registrations__student=student
+            ).distinct()
+            own_attendance = Attendance.objects.filter(student=student)
+            own_reviews = ManualReview.objects.filter(student=student)
+            context = {
+                'students_count': 1,
+                'exams_count': registered_exams.count(),
+                'verified_count': own_attendance.filter(
+                    attendance_status=Attendance.Status.PRESENT
+                ).count(),
+                'reviews_count': own_reviews.filter(decision='pending').count(),
+                'upcoming': registered_exams.filter(
+                    examination_date__gte=today
+                ).order_by('examination_date', 'start_time')[:5],
+                'recent_logs': VerificationLog.objects.filter(
+                    student=student
+                ).select_related('examination').order_by('-timestamp')[:6],
+                'demo_data_present': student.user.username.startswith('demo-student-'),
+            }
+        else:
+            context = {
+                'students_count': 0, 'exams_count': 0, 'verified_count': 0,
+                'reviews_count': 0, 'upcoming': [], 'recent_logs': [],
+                'demo_data_present': False,
+            }
+        return render(request, 'dashboard/student_dashboard.html', context)
+
+    if request.user.role == User.Roles.INVIGILATOR:
+        invigilator = getattr(request.user, 'invigilator_profile', None)
+        assigned_exams = (
+            invigilator.examinations.all() if invigilator
+            else Examination.objects.none()
+        )
+        assigned_attendance = Attendance.objects.filter(
+            examination__in=assigned_exams
+        )
+        assigned_reviews = ManualReview.objects.filter(
+            examination__in=assigned_exams
+        )
+        assigned_students = Student.objects.filter(
+            exam_registrations__examination__in=assigned_exams
+        ).distinct()
+        context = {
+            'students_count': assigned_students.count(),
+            'exams_count': assigned_exams.count(),
+            'verified_count': assigned_attendance.filter(
+                attendance_status=Attendance.Status.PRESENT
+            ).count(),
+            'reviews_count': assigned_reviews.filter(decision='pending').count(),
+            'upcoming': assigned_exams.filter(
+                examination_date__gte=today
+            ).order_by('examination_date', 'start_time')[:5],
+            'recent_logs': VerificationLog.objects.filter(
+                examination__in=assigned_exams
+            ).select_related('student', 'examination').order_by('-timestamp')[:6],
+            'demo_data_present': assigned_students.filter(
+                user__username__startswith='demo-student-'
+            ).exists(),
+        }
+        return render(request, 'dashboard/invigilator_dashboard.html', context)
+
+    if request.user.role == User.Roles.BOARD:
+        submitted_cases = IncidentCase.objects.filter(
+            status=IncidentCase.Status.SUBMITTED
+        ).select_related('student', 'examination', 'assigned_invigilator')
+        return render(request, 'dashboard/board_dashboard.html', {
+            'pending_cases_count': submitted_cases.count(),
+            'reviewed_cases_count': IncidentCase.objects.filter(
+                status=IncidentCase.Status.BOARD_REVIEWED
+            ).count(),
+            'recent_cases': submitted_cases.order_by('-updated_at')[:6],
+        })
+
+    context = {
+        'students_count': Student.objects.count(),
+        'exams_count': Examination.objects.count(),
+        'verified_count': Attendance.objects.filter(
+            attendance_status=Attendance.Status.PRESENT
+        ).count(),
+        'reviews_count': ManualReview.objects.filter(decision='pending').count(),
+        'upcoming': Examination.objects.filter(
+            examination_date__gte=today
+        ).order_by('examination_date', 'start_time')[:5],
+        'recent_logs': VerificationLog.objects.select_related(
+            'student', 'examination'
+        ).order_by('-timestamp')[:6],
+        'demo_data_present': Student.objects.filter(
+            user__username__startswith='demo-student-'
+        ).exists(),
+    }
     return render(request, 'dashboard/admin_dashboard.html', context)
 
 @role_required('admin')
@@ -200,8 +303,14 @@ def enrollment(request):
 
 @role_required('admin','invigilator')
 def verification(request):
-    examinations = Examination.objects.filter(status=Examination.Status.ACTIVE).order_by('examination_date', 'start_time')
+    examinations = _assigned_examinations(request.user).filter(
+        status=Examination.Status.ACTIVE
+    ).order_by('examination_date', 'start_time')
     students = Student.objects.select_related('user').order_by('full_name')
+    if request.user.role == User.Roles.INVIGILATOR:
+        students = students.filter(
+            exam_registrations__examination__in=examinations
+        ).distinct()
     if request.method == 'POST':
         examination = get_object_or_404(examinations, pk=request.POST.get('examination'))
         student = get_object_or_404(students, admission_number=request.POST.get('admission_number', '').strip())
@@ -227,27 +336,34 @@ def verification(request):
             overall_result=result['overall_result'],
             reviewing_invigilator=getattr(request.user, 'invigilator_profile', None),
         )
-        if result['overall_result'] == 'verified':
-            from .services.attendance_service import record
-            record(student, examination, status=Attendance.Status.PRESENT, method='simulated_fingerprint+face_prototype')
-            AuditLog.objects.create(user=request.user, action='attendance_verified', description=f'Prototype verification passed for {student.admission_number} in {examination.code}.')
-            messages.success(request, 'Both prototype checks matched. Attendance was recorded; this is not a production biometric identity decision.')
-        else:
-            ManualReview.objects.get_or_create(
-                student=student,
-                examination=examination,
-                decision='pending',
-                defaults={'reason': f"Prototype verification requires human review. Fingerprint: {result['fingerprint_result']}; face: {result['facial_result']}."},
-            )
-            AuditLog.objects.create(user=request.user, action='verification_referred', description=f'Prototype biometric check referred for human review: {student.admission_number} in {examination.code}. Fingerprint result: {result["fingerprint_result"]}; face result: {result["facial_result"]}.')
-            messages.warning(request, 'The result was not fully conclusive. It has been referred for human review; no verified attendance was recorded.')
+        # Prototype biometric output is never authoritative. Even if a future
+        # adapter accidentally returns "verified", attendance must remain
+        # provisional until an authorized human completes the review.
+        ManualReview.objects.get_or_create(
+            student=student,
+            examination=examination,
+            decision='pending',
+            defaults={'reason': f"Prototype verification requires human review. Fingerprint: {result['fingerprint_result']}; face: {result['facial_result']}; combined result: {result['overall_result']}."},
+        )
+        AuditLog.objects.create(
+            user=request.user,
+            action='verification_referred',
+            description=f'Prototype biometric check referred for human review: {student.admission_number} in {examination.code}. Fingerprint result: {result["fingerprint_result"]}; face result: {result["facial_result"]}; combined result: {result["overall_result"]}.',
+        )
+        messages.warning(request, 'Prototype results cannot confirm identity or attendance. The attempt has been referred for authorized human review.')
         return redirect('verification')
     return render(request, 'biometrics/verification.html', {'examinations': examinations, 'students': students})
 
 @role_required('admin','invigilator')
 def review_queue(request):
+    reviews = ManualReview.objects.filter(decision='pending')
+    if request.user.role == User.Roles.INVIGILATOR:
+        reviews = reviews.filter(examination__in=_assigned_examinations(request.user))
     if request.method == 'POST':
-        review = get_object_or_404(ManualReview.objects.select_related('student', 'examination'), pk=request.POST.get('review_id'), decision='pending')
+        review = get_object_or_404(
+            reviews.select_related('student', 'examination'),
+            pk=request.POST.get('review_id'),
+        )
         decision = request.POST.get('decision')
         notes = request.POST.get('notes', '').strip()
         if decision not in ('cleared', 'not_cleared') or not notes:
@@ -267,23 +383,41 @@ def review_queue(request):
         )
         messages.success(request, 'Human review decision saved and added to the audit trail.')
         return redirect('review_queue')
-    reviews = ManualReview.objects.filter(decision='pending').select_related('student', 'examination').order_by('timestamp')
+    reviews = reviews.select_related('student', 'examination').order_by('timestamp')
     return render(request, 'biometrics/review_queue.html', {'reviews': reviews})
 
 
 @role_required('admin','invigilator')
-def attendance(request): return render(request, 'attendance/attendance_list.html', {'records': Attendance.objects.select_related('student','examination').order_by('-verification_timestamp')})
+def attendance(request):
+    records = Attendance.objects.all()
+    if request.user.role == User.Roles.INVIGILATOR:
+        records = records.filter(examination__in=_assigned_examinations(request.user))
+    records = records.select_related('student', 'examination').order_by('-verification_timestamp')
+    return render(request, 'attendance/attendance_list.html', {'records': records})
 
 @role_required('admin','invigilator')
 def reports(request):
+    attendance_records = Attendance.objects.all()
+    pending_reviews = ManualReview.objects.filter(decision='pending')
+    verification_logs = VerificationLog.objects.all()
+    recent_activity = AuditLog.objects.all()
+    if request.user.role == User.Roles.INVIGILATOR:
+        assigned_exams = _assigned_examinations(request.user)
+        attendance_records = attendance_records.filter(examination__in=assigned_exams)
+        pending_reviews = pending_reviews.filter(examination__in=assigned_exams)
+        verification_logs = verification_logs.filter(examination__in=assigned_exams)
+        # Invigilators see only the audit actions they personally performed.
+        recent_activity = recent_activity.filter(user=request.user)
     context = {
-        'total': Attendance.objects.count(),
-        'present': Attendance.objects.filter(attendance_status=Attendance.Status.PRESENT).count(),
-        'manual': Attendance.objects.filter(attendance_status=Attendance.Status.MANUAL).count(),
-        'absent': Attendance.objects.filter(attendance_status=Attendance.Status.ABSENT).count(),
-        'reviews': ManualReview.objects.filter(decision='pending').count(),
-        'verification_logs': VerificationLog.objects.select_related('student', 'examination').order_by('-timestamp')[:10],
-        'recent_activity': AuditLog.objects.select_related('user').order_by('-timestamp')[:10],
+        'total': attendance_records.count(),
+        'present': attendance_records.filter(attendance_status=Attendance.Status.PRESENT).count(),
+        'manual': attendance_records.filter(attendance_status=Attendance.Status.MANUAL).count(),
+        'absent': attendance_records.filter(attendance_status=Attendance.Status.ABSENT).count(),
+        'reviews': pending_reviews.count(),
+        'verification_logs': verification_logs.select_related(
+            'student', 'examination'
+        ).order_by('-timestamp')[:10],
+        'recent_activity': recent_activity.select_related('user').order_by('-timestamp')[:10],
     }
     return render(request, 'reports/reports_dashboard.html', context)
 
@@ -294,26 +428,34 @@ def incident_queue(request):
     cases = IncidentCase.objects.select_related(
         'student', 'examination', 'assigned_invigilator', 'created_by'
     ).prefetch_related('events')
-    if request.user.role == 'invigilator' and not request.user.is_superuser:
+    if request.user.role == User.Roles.INVIGILATOR and not request.user.is_superuser:
         cases = cases.filter(assigned_invigilator=request.user)
+    active_exams = _assigned_examinations(request.user).filter(
+        status=Examination.Status.ACTIVE
+    ).order_by('examination_date', 'start_time')
+    students = Student.objects.order_by('full_name')
+    if request.user.role == User.Roles.INVIGILATOR:
+        students = students.filter(
+            exam_registrations__examination__in=active_exams
+        ).distinct()
     return render(request, 'incidents/incident_queue.html', {
         'cases': cases,
-        'students': Student.objects.order_by('full_name'),
-        'examinations': Examination.objects.filter(status=Examination.Status.ACTIVE).order_by('examination_date', 'start_time'),
+        'students': students,
+        'examinations': active_exams,
     })
 
 
 @role_required('admin', 'invigilator')
 @require_POST
 def incident_create(request):
-    student = get_object_or_404(Student, pk=request.POST.get('student_id'))
     examination = get_object_or_404(
-        Examination.objects.filter(status=Examination.Status.ACTIVE),
+        _assigned_examinations(request.user).filter(status=Examination.Status.ACTIVE),
         pk=request.POST.get('examination_id'),
     )
-    if request.user.role == 'invigilator' and not request.user.is_superuser:
-        if not examination.invigilators.filter(pk=getattr(request.user, 'invigilator_profile', None).pk if hasattr(request.user, 'invigilator_profile') else -1).exists():
-            raise Http404
+    student = get_object_or_404(
+        Student.objects.filter(exam_registrations__examination=examination).distinct(),
+        pk=request.POST.get('student_id'),
+    )
 
     def checked(name):
         return request.POST.get(name) == 'on'

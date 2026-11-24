@@ -1,7 +1,7 @@
 from datetime import date, time
 from django.contrib.auth import get_user_model
 from django.test import TestCase
-from integrity.models import Attendance, AuditLog, BiometricProfile, Examination, ManualReview, Student, VerificationLog
+from integrity.models import Attendance, AuditLog, BiometricProfile, Examination, ExaminationRegistration, Invigilator, ManualReview, Student, VerificationLog
 from integrity.services.verification_service import combine
 from integrity.services.attendance_service import record
 
@@ -46,9 +46,139 @@ class IntegrityCoreTests(TestCase):
         pending.refresh_from_db()
         self.assertTrue(pending.is_active)
 
+    def test_account_approval_rejects_get_requests(self):
+        admin = get_user_model().objects.create_user(
+            username='approval-admin', password='admin-pass-123', role='admin'
+        )
+        pending = get_user_model().objects.create_user(
+            username='pending-get', password='strong-pass-123', role='student', is_active=False
+        )
+        self.client.force_login(admin)
+        response = self.client.get(f'/accounts/{pending.pk}/approve/')
+        self.assertEqual(response.status_code, 405)
+        pending.refresh_from_db()
+        self.assertFalse(pending.is_active)
+
     def test_dashboard_requires_authentication(self):
         response = self.client.get('/')
         self.assertRedirects(response, '/login/?next=/')
+
+    def test_student_dashboard_only_counts_their_own_registered_exams_and_attendance(self):
+        other_user = get_user_model().objects.create_user(username='other-student', password='test-pass-123', role='student')
+        other_student = Student.objects.create(
+            user=other_user, admission_number='A099', full_name='Other Student',
+            course='BSc', department='Computing',
+        )
+        other_exam = Examination.objects.create(
+            title='Other Systems', code='SYS099', course='BSc',
+            examination_date=date.today(), start_time=time(12), end_time=time(14),
+            venue='Hall B', status='active',
+        )
+        ExaminationRegistration.objects.create(student=self.student, examination=self.exam)
+        ExaminationRegistration.objects.create(student=other_student, examination=other_exam)
+        Attendance.objects.create(student=self.student, examination=self.exam, attendance_status=Attendance.Status.PRESENT)
+        Attendance.objects.create(student=other_student, examination=other_exam, attendance_status=Attendance.Status.PRESENT)
+
+        self.client.force_login(self.student.user)
+        response = self.client.get('/')
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.context['students_count'], 1)
+        self.assertEqual(response.context['exams_count'], 1)
+        self.assertEqual(response.context['verified_count'], 1)
+        self.assertEqual(list(response.context['upcoming']), [self.exam])
+
+    def test_invigilator_dashboard_only_counts_assigned_examinations(self):
+        invigilator_user = get_user_model().objects.create_user(
+            username='assigned-invigilator', password='test-pass-123', role='invigilator'
+        )
+        invigilator = Invigilator.objects.create(
+            user=invigilator_user, staff_number='INV-001',
+            full_name='Assigned Invigilator', department='Computing',
+        )
+        invigilator.examinations.add(self.exam)
+        other_exam = Examination.objects.create(
+            title='Unassigned Systems', code='SYS098', course='BSc',
+            examination_date=date.today(), start_time=time(12), end_time=time(14),
+            venue='Hall C', status='active',
+        )
+        Attendance.objects.create(student=self.student, examination=self.exam, attendance_status=Attendance.Status.PRESENT)
+        Attendance.objects.create(student=self.student, examination=other_exam, attendance_status=Attendance.Status.PRESENT)
+
+        self.client.force_login(invigilator_user)
+        response = self.client.get('/')
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.context['exams_count'], 1)
+        self.assertEqual(response.context['verified_count'], 1)
+        self.assertEqual(list(response.context['upcoming']), [self.exam])
+
+    def test_board_role_receives_board_dashboard_not_administrator_dashboard(self):
+        board_user = get_user_model().objects.create_user(
+            username='board-user', password='test-pass-123', role='board'
+        )
+        self.client.force_login(board_user)
+        response = self.client.get('/')
+        self.assertEqual(response.status_code, 200)
+        self.assertTemplateUsed(response, 'dashboard/board_dashboard.html')
+        self.assertNotIn('students_count', response.context)
+
+    def test_invigilator_cannot_clear_a_review_for_an_unassigned_examination(self):
+        invigilator_user = get_user_model().objects.create_user(
+            username='reviewing-invigilator', password='test-pass-123', role='invigilator'
+        )
+        invigilator = Invigilator.objects.create(
+            user=invigilator_user, staff_number='INV-002',
+            full_name='Reviewing Invigilator', department='Computing',
+        )
+        invigilator.examinations.add(self.exam)
+        other_exam = Examination.objects.create(
+            title='Unassigned Review', code='SYS097', course='BSc',
+            examination_date=date.today(), start_time=time(12), end_time=time(14),
+            venue='Hall D', status='active',
+        )
+        review = ManualReview.objects.create(
+            student=self.student, examination=other_exam, reason='Restricted review'
+        )
+        self.client.force_login(invigilator_user)
+        response = self.client.post('/reviews/', {
+            'review_id': review.pk,
+            'decision': 'cleared',
+            'notes': 'Attempted cross-examination review.',
+        })
+        self.assertEqual(response.status_code, 404)
+        review.refresh_from_db()
+        self.assertEqual(review.decision, 'pending')
+        self.assertFalse(Attendance.objects.filter(
+            student=self.student,
+            examination=other_exam,
+            attendance_status=Attendance.Status.PRESENT,
+        ).exists())
+
+    def test_invigilator_attendance_list_excludes_unassigned_examinations(self):
+        invigilator_user = get_user_model().objects.create_user(
+            username='attendance-invigilator', password='test-pass-123', role='invigilator'
+        )
+        invigilator = Invigilator.objects.create(
+            user=invigilator_user, staff_number='INV-003',
+            full_name='Attendance Invigilator', department='Computing',
+        )
+        invigilator.examinations.add(self.exam)
+        other_exam = Examination.objects.create(
+            title='Unassigned Attendance', code='SYS096', course='BSc',
+            examination_date=date.today(), start_time=time(12), end_time=time(14),
+            venue='Hall E', status='active',
+        )
+        own_record = Attendance.objects.create(
+            student=self.student, examination=self.exam, attendance_status=Attendance.Status.PRESENT
+        )
+        Attendance.objects.create(
+            student=self.student, examination=other_exam, attendance_status=Attendance.Status.PRESENT
+        )
+        self.client.force_login(invigilator_user)
+        response = self.client.get('/attendance/')
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(list(response.context['records']), [own_record])
 
     def test_admin_dashboard_counts_saved_records(self):
         admin = get_user_model().objects.create_user(username='admin-dashboard', password='admin-pass-123', role='admin', is_staff=True)
@@ -130,15 +260,15 @@ class IntegrityCoreTests(TestCase):
         self.assertNotIn(plain, encrypted)
         self.assertEqual(_decrypt_template(encrypted), plain)
 
-    def test_student_can_enroll_fingerprint_without_face_capture(self):
+    def test_student_enrollment_requires_separate_face_consent(self):
         self.client.force_login(self.student.user)
-        response = self.client.post('/biometrics/enroll/', {'student_consent': 'yes', 'fingerprint_consent': 'yes'})
+        response = self.client.post('/biometrics/enroll/', {
+            'student_consent': 'yes',
+            'fingerprint_consent': 'yes',
+        })
         self.assertRedirects(response, '/biometrics/enroll/')
-        profile = BiometricProfile.objects.get(student=self.student)
-        self.assertTrue(profile.fingerprint_reference)
-        self.assertEqual(profile.enrollment_status, 'fingerprint_only')
-        self.assertIsNotNone(profile.enrollment_date)
-        self.assertTrue(AuditLog.objects.filter(action='biometric_enrollment').exists())
+        self.assertFalse(BiometricProfile.objects.filter(student=self.student).exists())
+        self.assertFalse(AuditLog.objects.filter(action='biometric_enrollment').exists())
 
     def test_enrollment_requires_student_consent(self):
         self.client.force_login(self.student.user)
@@ -167,15 +297,40 @@ class IntegrityCoreTests(TestCase):
         self.assertEqual(log.overall_result, 'manual_review')
         self.assertFalse(Attendance.objects.filter(student=self.student, examination=self.exam, attendance_status=Attendance.Status.PRESENT).exists())
 
-    def test_admin_can_enroll_selected_student_fingerprint(self):
+    def test_even_a_future_verified_adapter_result_requires_human_review(self):
+        from unittest.mock import patch
+        admin = get_user_model().objects.create_user(username='future-adapter-admin', password='admin-pass-123', role='admin')
+        BiometricProfile.objects.create(student=self.student, fingerprint_reference='SIMULATION-NOT-A-BIOMETRIC')
+        self.client.force_login(admin)
+        mocked_result = {
+            'fingerprint_result': 'match',
+            'facial_result': 'match',
+            'overall_result': 'verified',
+        }
+        with patch('integrity.services.verification_service.verify', return_value=mocked_result):
+            response = self.client.post('/biometrics/verify/', {
+                'examination': self.exam.pk,
+                'admission_number': self.student.admission_number,
+                'face_data': '',
+            })
+        self.assertRedirects(response, '/biometrics/verify/')
+        self.assertEqual(VerificationLog.objects.get().overall_result, 'verified')
+        self.assertTrue(ManualReview.objects.filter(student=self.student, examination=self.exam, decision='pending').exists())
+        self.assertFalse(Attendance.objects.filter(
+            student=self.student,
+            examination=self.exam,
+            attendance_status=Attendance.Status.PRESENT,
+        ).exists())
+
+    def test_admin_enrollment_requires_face_capture_even_when_consents_are_given(self):
         admin = get_user_model().objects.create_user(username='biometric-admin', password='admin-pass-123', role='admin')
         self.client.force_login(admin)
         response = self.client.post('/biometrics/enroll/', {
             'student_id': self.student.pk,
             'student_consent': 'yes',
             'fingerprint_consent': 'yes',
+            'face_consent': 'yes',
         })
         self.assertRedirects(response, '/biometrics/enroll/')
-        profile = BiometricProfile.objects.get(student=self.student)
-        self.assertTrue(profile.fingerprint_reference)
-        self.assertEqual(profile.enrollment_status, 'fingerprint_only')
+        self.assertFalse(BiometricProfile.objects.filter(student=self.student).exists())
+        self.assertFalse(AuditLog.objects.filter(action='biometric_enrollment').exists())
