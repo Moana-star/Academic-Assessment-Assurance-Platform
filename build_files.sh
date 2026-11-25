@@ -1,9 +1,10 @@
 #!/bin/bash
 set -eu
 
-# Apply additive Django schema migrations to the configured production database
-# before serving the deployment. This creates the incident/audit tables required
-# by the Incident Cues workflow.
+# Apply Django schema and data migrations to the configured database before serving.
+# The demo-cleanup migration removes only recognisable seeded records and moves
+# legacy biometric attendance into human review; production DATABASE_URL is
+# intentionally unavailable to preview deployments.
 python manage.py migrate --noinput
 
 # Collect static assets for the Vercel deployment.
