@@ -1,0 +1,5 @@
+{% extends 'base.html' %}
+{% block content %}
+<div class="page-head"><div><p class="eyebrow">People and access</p><h1>Invigilators</h1><p>Create staff profiles and manage examination assignments.</p></div><a class="button" href="{% url 'invigilator_add' %}">Add invigilator</a></div>
+<section class="panel"><table><tr><th>Staff number</th><th>Name</th><th>Department</th><th>Username</th><th>Account status</th></tr>{% for item in invigilators %}<tr><td><b>{{ item.staff_number }}</b></td><td>{{ item.full_name }}</td><td>{{ item.department }}</td><td>{{ item.user.username }}</td><td>{% if item.user.is_active %}<span class="status">Approved</span>{% else %}<span class="status warning">Awaiting approval</span>{% endif %}</td></tr>{% empty %}<tr><td colspan="5">No invigilators have been added.</td></tr>{% endfor %}</table></section>
+{% endblock %}
