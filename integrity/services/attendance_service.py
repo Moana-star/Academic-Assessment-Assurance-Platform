@@ -2,7 +2,7 @@ from django.db import IntegrityError
 from ..models import Attendance
 
 
-def record(student, examination, status=Attendance.Status.PRESENT, method='biometric'):
+def record(student, examination, status=Attendance.Status.PRESENT, method='staff_identity_check'):
     try:
         attendance, created = Attendance.objects.get_or_create(
             student=student,
