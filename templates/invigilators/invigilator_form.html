@@ -1,0 +1,4 @@
+{% extends 'base.html' %}
+{% block content %}
+<div class="form-wrap"><p class="eyebrow">People and access</p><h1>{{ title }}</h1><p>The account will remain inactive until an administrator approves it. Use a temporary password and share it securely with the staff member after approval.</p><form method="post">{% csrf_token %}{{ form.as_p }}<button class="button" type="submit">Create invigilator</button></form></div>
+{% endblock %}
