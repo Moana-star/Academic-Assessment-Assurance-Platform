@@ -1,1 +1,15 @@
-{% extends 'base.html' %}{% block content %}<div class='page-head'><div><p class='eyebrow'>Access control</p><h1>Account approvals</h1><p>Review new registration requests before enabling access.</p></div></div><section class='panel'><table><tr><th>Username</th><th>Student</th><th>Admission number</th><th>Submitted</th><th>Action</th></tr>{% for account in pending_accounts %}<tr><td><b>{{ account.username }}</b><br><small>{{ account.email }}</small></td><td>{{ account.student_profile.full_name }}</td><td>{{ account.student_profile.admission_number }}</td><td>{{ account.date_joined }}</td><td><form method='post' action='{% url "approve_account" account.id %}'>{% csrf_token %}<button class='button'>Approve account</button></form></td></tr>{% empty %}<tr><td colspan='5'>No accounts are waiting for approval.</td></tr>{% endfor %}</table></section>{% endblock %}
+{% extends 'base.html' %}
+{% block content %}
+<div class="page-head"><div><p class="eyebrow">Access control</p><h1>Account approvals</h1><p>Review student and invigilator requests before enabling access.</p></div><span class="pill">{{ pending_accounts|length }} pending</span></div>
+<section class="panel"><table><tr><th>Account</th><th>Role</th><th>Institutional profile</th><th>Submitted</th><th>Action</th></tr>
+{% for account in pending_accounts %}
+<tr>
+  <td><b>{{ account.username }}</b><br><small>{{ account.email|default:"No email supplied" }}</small></td>
+  <td>{{ account.get_role_display }}</td>
+  <td>{% if account.role == 'student' %}{{ account.student_profile.full_name }} · {{ account.student_profile.admission_number }}{% elif account.role == 'invigilator' %}{{ account.invigilator_profile.full_name }} · {{ account.invigilator_profile.staff_number }}{% endif %}</td>
+  <td>{{ account.date_joined|date:"d M Y, H:i" }}</td>
+  <td><form method="post" action="{% url 'approve_account' account.id %}">{% csrf_token %}<button class="button" type="submit">Approve account</button></form></td>
+</tr>
+{% empty %}<tr><td colspan="5">No accounts are waiting for approval.</td></tr>{% endfor %}
+</table></section>
+{% endblock %}
