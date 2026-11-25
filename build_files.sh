@@ -7,5 +7,9 @@ set -eu
 # intentionally unavailable to preview deployments.
 python manage.py migrate --noinput
 
+# If DATABASE_URL is configured, preserve records from the previous Vercel
+# SQLite build cache before the application starts using managed PostgreSQL.
+python manage.py import_legacy_sqlite
+
 # Collect static assets for the Vercel deployment.
 python manage.py collectstatic --noinput
