@@ -1,4 +1,4 @@
-from django.db import migrations
+from django.db import migrations, models
 from django.db.models import Q
 
 
@@ -115,7 +115,7 @@ class Migration(migrations.Migration):
         migrations.AlterField(
             model_name="attendance",
             name="verification_method",
-            field=__import__("django.db.models", fromlist=["models"]).CharField(
+            field=models.CharField(
                 default="staff_identity_check",
                 max_length=40,
             ),
