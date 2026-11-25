@@ -93,6 +93,7 @@ def dashboard(request):
     context = {'students_count': Student.objects.count(), 'exams_count': Examination.objects.count(), 'verified_count': Attendance.objects.filter(attendance_status='present').count(), 'reviews_count': ManualReview.objects.filter(decision='pending').count(), 'upcoming': Examination.objects.filter(status=Examination.Status.UPCOMING, examination_date__gte=today).order_by('examination_date')[:5], 'past_active': Examination.objects.filter(status=Examination.Status.ACTIVE, examination_date__lt=today).order_by('examination_date'), 'recent_logs': IdentityVerification.objects.select_related('student', 'examination', 'checked_by').order_by('-checked_at')[:6]}
     if request.user.role == 'student': return render(request, 'dashboard/student_dashboard.html', context)
     if request.user.role == 'invigilator': return render(request, 'dashboard/invigilator_dashboard.html', context)
+    if request.user.role == 'board': return redirect('board_case_queue')
     return render(request, 'dashboard/admin_dashboard.html', context)
 
 @role_required('admin')
