@@ -90,6 +90,18 @@ else:
         }
     }
 
+# When moving the Vercel build-cache SQLite database to managed PostgreSQL,
+# expose the previous file as a read-only import source. The import command
+# runs only when DATABASE_URL is configured and the target database is empty.
+LEGACY_SQLITE_PATH = BASE_DIR / "db.sqlite3"
+if DATABASE_URL and LEGACY_SQLITE_PATH.is_file():
+    DATABASES["legacy_sqlite"] = {
+        "ENGINE": "django.db.backends.sqlite3",
+        "NAME": LEGACY_SQLITE_PATH,
+        "OPTIONS": {"timeout": 20},
+        "CONN_MAX_AGE": 0,
+    }
+
 AUTH_PASSWORD_VALIDATORS = [
     {"NAME": "django.contrib.auth.password_validation.UserAttributeSimilarityValidator"},
     {"NAME": "django.contrib.auth.password_validation.MinimumLengthValidator"},
