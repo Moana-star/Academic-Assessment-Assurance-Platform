@@ -5,7 +5,7 @@ from django.test import TestCase
 from django.urls import reverse
 
 from integrity.models import (
-    Examination, IncidentAuditEvent, IncidentCase, Invigilator, Student,
+    Examination, ExaminationRegistration, IncidentAuditEvent, IncidentCase, Invigilator, Student,
 )
 
 
@@ -35,6 +35,7 @@ class IncidentWorkflowIntegrationTests(TestCase):
             venue='Room A', status=Examination.Status.ACTIVE,
         )
         self.exam.invigilators.add(self.invigilator)
+        ExaminationRegistration.objects.create(student=self.student, examination=self.exam)
 
     def test_r6_creates_persisted_case_and_audit_event(self):
         self.client.force_login(self.invigilator_user)
