@@ -64,6 +64,15 @@ class IntegrityCoreTests(TestCase):
         pending.refresh_from_db()
         self.assertTrue(pending.is_active)
 
+    def test_board_user_is_sent_to_dedicated_case_queue(self):
+        board = get_user_model().objects.create_user(
+            username='board-user', password='board-pass-123',
+            role='board',
+        )
+        self.client.force_login(board)
+        response = self.client.get('/')
+        self.assertRedirects(response, '/board/cases/')
+
     def test_dashboard_requires_authentication(self):
         response = self.client.get('/')
         self.assertRedirects(response, '/login/?next=/')
