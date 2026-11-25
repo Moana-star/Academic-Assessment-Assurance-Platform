@@ -366,12 +366,18 @@ def incident_queue(request):
     ).prefetch_related('events')
     if request.user.role == 'invigilator' and not request.user.is_superuser:
         cases = cases.filter(assigned_invigilator=request.user)
+    active_examinations = Examination.objects.filter(
+        status=Examination.Status.ACTIVE,
+        examination_date=timezone.localdate(),
+    )
+    if request.user.role == 'invigilator' and not request.user.is_superuser:
+        active_examinations = active_examinations.filter(invigilators__user=request.user)
     return render(request, 'incidents/incident_queue.html', {
         'cases': cases,
         'students': Student.objects.filter(
-            exam_registrations__examination__status=Examination.Status.ACTIVE
+            exam_registrations__examination__in=active_examinations
         ).distinct().order_by('full_name'),
-        'examinations': Examination.objects.filter(status=Examination.Status.ACTIVE, examination_date=timezone.localdate()).filter(invigilators__user=request.user) if request.user.role == 'invigilator' and not request.user.is_superuser else Examination.objects.filter(status=Examination.Status.ACTIVE, examination_date=timezone.localdate()).order_by('start_time'),
+        'examinations': active_examinations.order_by('start_time'),
     })
 
 
