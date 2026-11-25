@@ -1,6 +1,6 @@
 from django import forms
 from django.contrib.auth import get_user_model
-from .models import Examination, Student
+from .models import Examination, Invigilator, Student
 
 class RegistrationForm(forms.Form):
     username = forms.CharField(max_length=150, label='Username')
@@ -31,5 +31,43 @@ class StudentForm(forms.ModelForm):
 
 class ExaminationForm(forms.ModelForm):
     class Meta:
-        model = Examination; fields = ['title','code','course','examination_date','start_time','end_time','venue','status']
-        widgets = {'examination_date': forms.DateInput(attrs={'type':'date'}), 'start_time': forms.TimeInput(attrs={'type':'time'}), 'end_time': forms.TimeInput(attrs={'type':'time'})}
+        model = Examination
+        fields = ['title', 'code', 'course', 'examination_date', 'start_time', 'end_time', 'venue', 'status']
+        widgets = {
+            'examination_date': forms.DateInput(attrs={'type': 'date'}),
+            'start_time': forms.TimeInput(attrs={'type': 'time'}),
+            'end_time': forms.TimeInput(attrs={'type': 'time'}),
+        }
+
+    def clean(self):
+        cleaned = super().clean()
+        start_time = cleaned.get('start_time')
+        end_time = cleaned.get('end_time')
+        if start_time and end_time and end_time <= start_time:
+            self.add_error('end_time', 'End time must be later than start time.')
+        return cleaned
+
+
+class InvigilatorForm(forms.Form):
+    username = forms.CharField(max_length=150)
+    email = forms.EmailField(required=False)
+    temporary_password = forms.CharField(
+        widget=forms.PasswordInput,
+        min_length=8,
+        label='Temporary password',
+    )
+    staff_number = forms.CharField(max_length=40)
+    full_name = forms.CharField(max_length=160)
+    department = forms.CharField(max_length=160)
+
+    def clean_username(self):
+        value = self.cleaned_data['username'].strip()
+        if get_user_model().objects.filter(username__iexact=value).exists():
+            raise forms.ValidationError('That username is already in use.')
+        return value
+
+    def clean_staff_number(self):
+        value = self.cleaned_data['staff_number'].strip()
+        if Invigilator.objects.filter(staff_number__iexact=value).exists():
+            raise forms.ValidationError('That staff number is already registered.')
+        return value

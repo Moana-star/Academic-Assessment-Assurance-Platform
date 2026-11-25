@@ -10,8 +10,8 @@ from django.db import transaction
 from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import timezone
 from django.utils.crypto import constant_time_compare
-from .forms import ExaminationForm, RegistrationForm, StudentForm
-from .models import Attendance, AuditLog, Examination, ExaminationRegistration, IdentityVerification, IncidentAuditEvent, IncidentCase, ManualReview, Student
+from .forms import ExaminationForm, InvigilatorForm, RegistrationForm, StudentForm
+from .models import Attendance, AuditLog, Examination, ExaminationRegistration, IdentityVerification, IncidentAuditEvent, IncidentCase, Invigilator, ManualReview, Student
 from .permissions import role_required
 from .services.anomaly_decision import AnomalyInputs, evaluate as evaluate_anomaly
 from .services.human_verification import CaseStatus, WorkflowError, transition_case
@@ -75,7 +75,7 @@ def administrator_setup(request, token):
 
 @role_required('admin')
 def pending_accounts(request):
-    pending = User.objects.filter(is_active=False, role__in=[User.Roles.STUDENT, User.Roles.INVIGILATOR]).select_related('student_profile').order_by('date_joined')
+    pending = User.objects.filter(is_active=False, role__in=[User.Roles.STUDENT, User.Roles.INVIGILATOR]).select_related('student_profile', 'invigilator_profile').order_by('date_joined')
     return render(request, 'accounts/pending.html', {'pending_accounts': pending})
 
 @role_required('admin')
@@ -89,9 +89,11 @@ def approve_account(request, user_id):
 
 @login_required
 def dashboard(request):
-    context = {'students_count': Student.objects.count(), 'exams_count': Examination.objects.count(), 'verified_count': Attendance.objects.filter(attendance_status='present').count(), 'reviews_count': ManualReview.objects.filter(decision='pending').count(), 'upcoming': Examination.objects.filter(examination_date__gte=timezone.localdate()).order_by('examination_date')[:5], 'recent_logs': IdentityVerification.objects.select_related('student', 'examination', 'checked_by').order_by('-checked_at')[:6]}
+    today = timezone.localdate()
+    context = {'students_count': Student.objects.count(), 'exams_count': Examination.objects.count(), 'verified_count': Attendance.objects.filter(attendance_status='present').count(), 'reviews_count': ManualReview.objects.filter(decision='pending').count(), 'upcoming': Examination.objects.filter(status=Examination.Status.UPCOMING, examination_date__gte=today).order_by('examination_date')[:5], 'past_active': Examination.objects.filter(status=Examination.Status.ACTIVE, examination_date__lt=today).order_by('examination_date'), 'recent_logs': IdentityVerification.objects.select_related('student', 'examination', 'checked_by').order_by('-checked_at')[:6]}
     if request.user.role == 'student': return render(request, 'dashboard/student_dashboard.html', context)
     if request.user.role == 'invigilator': return render(request, 'dashboard/invigilator_dashboard.html', context)
+    if request.user.role == 'board': return redirect('board_case_queue')
     return render(request, 'dashboard/admin_dashboard.html', context)
 
 @role_required('admin')
@@ -105,17 +107,133 @@ def student_add(request):
     return render(request, 'students/student_form.html', {'form': form, 'title': 'Register student'})
 
 @role_required('admin')
-def examinations(request): return render(request, 'examinations/examination_list.html', {'examinations': Examination.objects.order_by('-examination_date')})
+def examinations(request):
+    return render(request, 'examinations/examination_list.html', {
+        'examinations': Examination.objects.prefetch_related('invigilators').order_by('-examination_date')
+    })
+
+
+@role_required('admin')
+def examination_manage(request, examination_id):
+    examination = get_object_or_404(Examination, pk=examination_id)
+    if request.method == 'POST':
+        action = request.POST.get('action', '')
+        if action == 'register_student':
+            student = get_object_or_404(Student, pk=request.POST.get('student_id'))
+            registration, created = ExaminationRegistration.objects.get_or_create(
+                student=student, examination=examination
+            )
+            if created:
+                AuditLog.objects.create(
+                    user=request.user, action='examination_student_registered',
+                    description=f'Registered {student.admission_number} for {examination.code}.',
+                )
+                messages.success(request, f'{student.admission_number} registered for {examination.code}.')
+            else:
+                messages.info(request, 'That student is already registered for this examination.')
+        elif action == 'assign_invigilator':
+            invigilator = get_object_or_404(Invigilator.objects.select_related('user'), pk=request.POST.get('invigilator_id'))
+            if not invigilator.user.is_active:
+                messages.error(request, 'Approve the invigilator account before assigning examination duties.')
+            elif examination.invigilators.filter(pk=invigilator.pk).exists():
+                messages.info(request, 'That invigilator is already assigned.')
+            else:
+                examination.invigilators.add(invigilator)
+                AuditLog.objects.create(
+                    user=request.user, action='examination_invigilator_assigned',
+                    description=f'Assigned {invigilator.staff_number} to {examination.code}.',
+                )
+                messages.success(request, f'{invigilator.full_name} assigned to {examination.code}.')
+        elif action == 'update_status':
+            status = request.POST.get('status', '')
+            if status not in Examination.Status.values:
+                messages.error(request, 'Choose a valid examination status.')
+            elif status == Examination.Status.ACTIVE and examination.examination_date != timezone.localdate():
+                messages.error(request, 'An examination can be marked Active only on its scheduled date. Check the date before changing its status.')
+            elif status == Examination.Status.UPCOMING and examination.examination_date < timezone.localdate():
+                messages.error(request, 'A past examination cannot be marked Upcoming. Mark it Completed or Archived.')
+            else:
+                previous = examination.status
+                examination.status = status
+                examination.save(update_fields=['status'])
+                AuditLog.objects.create(
+                    user=request.user, action='examination_status_updated',
+                    description=f'{examination.code} status changed from {previous} to {status}.',
+                )
+                messages.success(request, 'Examination status updated.')
+        else:
+            raise Http404
+        return redirect('examination_manage', examination_id=examination.pk)
+
+    registrations = ExaminationRegistration.objects.filter(
+        examination=examination
+    ).select_related('student', 'student__user').order_by('student__full_name')
+    registered_ids = registrations.values_list('student_id', flat=True)
+    available_students = Student.objects.exclude(pk__in=registered_ids).order_by('full_name')
+    assigned_invigilators = examination.invigilators.select_related('user').order_by('full_name')
+    available_invigilators = Invigilator.objects.select_related('user').filter(
+        user__is_active=True
+    ).exclude(pk__in=assigned_invigilators.values_list('pk', flat=True)).order_by('full_name')
+    return render(request, 'examinations/examination_manage.html', {
+        'examination': examination,
+        'registrations': registrations,
+        'available_students': available_students,
+        'assigned_invigilators': assigned_invigilators,
+        'available_invigilators': available_invigilators,
+        'status_choices': Examination.Status.choices,
+    })
+
+
+@role_required('admin')
+def invigilators(request):
+    return render(request, 'invigilators/invigilator_list.html', {
+        'invigilators': Invigilator.objects.select_related('user').order_by('full_name')
+    })
+
+
+@role_required('admin')
+def invigilator_add(request):
+    form = InvigilatorForm(request.POST or None)
+    if form.is_valid():
+        data = form.cleaned_data
+        candidate = User(username=data['username'], email=data['email'])
+        try:
+            validate_password(data['temporary_password'], user=candidate)
+        except ValidationError as exc:
+            form.add_error('temporary_password', ' '.join(exc.messages))
+        else:
+            with transaction.atomic():
+                user = User.objects.create_user(
+                    username=data['username'], email=data['email'],
+                    password=data['temporary_password'], role=User.Roles.INVIGILATOR,
+                    is_active=False,
+                )
+                Invigilator.objects.create(
+                    user=user, staff_number=data['staff_number'],
+                    full_name=data['full_name'], department=data['department'],
+                )
+                AuditLog.objects.create(
+                    user=request.user, action='invigilator_created',
+                    description=f'Created pending invigilator account {data["staff_number"]}.',
+                )
+            messages.success(request, 'Invigilator profile created. Approve the account before assigning examination duties.')
+            return redirect('invigilators')
+    return render(request, 'invigilators/invigilator_form.html', {'form': form, 'title': 'Add invigilator'})
 
 @role_required('admin')
 def examination_add(request):
     form = ExaminationForm(request.POST or None)
-    if form.is_valid(): form.save(); messages.success(request, 'Examination created.'); return redirect('examinations')
+    if form.is_valid():
+        examination = form.save()
+        AuditLog.objects.create(user=request.user, action='examination_created', description=f'Created examination {examination.code}.')
+        messages.success(request, 'Examination created. Register candidates and assign invigilators before the examination begins.')
+        return redirect('examination_manage', examination_id=examination.pk)
     return render(request, 'examinations/examination_form.html', {'form': form, 'title': 'Create examination'})
 
 @role_required('admin', 'invigilator')
+@transaction.atomic
 def verification(request):
-    examinations = Examination.objects.filter(status=Examination.Status.ACTIVE).order_by('examination_date', 'start_time')
+    examinations = Examination.objects.filter(status=Examination.Status.ACTIVE, examination_date=timezone.localdate()).order_by('start_time')
     if request.user.role == 'invigilator' and not request.user.is_superuser:
         invigilator = getattr(request.user, 'invigilator_profile', None)
         if invigilator is None:
@@ -178,9 +296,13 @@ def verification(request):
     })
 
 @role_required('admin','invigilator')
+@transaction.atomic
 def review_queue(request):
     if request.method == 'POST':
-        review = get_object_or_404(ManualReview.objects.select_related('student', 'examination'), pk=request.POST.get('review_id'), decision='pending')
+        review_queryset = ManualReview.objects.select_related('student', 'examination').filter(decision='pending')
+        if request.user.role == 'invigilator' and not request.user.is_superuser:
+            review_queryset = review_queryset.filter(examination__invigilators__user=request.user)
+        review = get_object_or_404(review_queryset, pk=request.POST.get('review_id'))
         decision = request.POST.get('decision')
         notes = request.POST.get('notes', '').strip()
         if decision not in ('cleared', 'not_cleared') or not notes:
@@ -201,22 +323,38 @@ def review_queue(request):
         messages.success(request, 'Human review decision saved and added to the audit trail.')
         return redirect('review_queue')
     reviews = ManualReview.objects.filter(decision='pending').select_related('student', 'examination').order_by('timestamp')
+    if request.user.role == 'invigilator' and not request.user.is_superuser:
+        reviews = reviews.filter(examination__invigilators__user=request.user).distinct()
     return render(request, 'reviews/review_queue.html', {'reviews': reviews})
 
 
 @role_required('admin','invigilator')
-def attendance(request): return render(request, 'attendance/attendance_list.html', {'records': Attendance.objects.select_related('student','examination').order_by('-verification_timestamp')})
+def attendance(request):
+    records = Attendance.objects.select_related('student', 'examination').order_by('-verification_timestamp')
+    if request.user.role == 'invigilator' and not request.user.is_superuser:
+        records = records.filter(examination__invigilators__user=request.user)
+    return render(request, 'attendance/attendance_list.html', {'records': records})
 
 @role_required('admin','invigilator')
 def reports(request):
+    attendance_records = Attendance.objects.all()
+    pending_reviews = ManualReview.objects.filter(decision='pending')
+    identity_checks = IdentityVerification.objects.select_related('student', 'examination', 'checked_by')
+    recent_activity = AuditLog.objects.select_related('user')
+    if request.user.role == 'invigilator' and not request.user.is_superuser:
+        assigned_exams = Examination.objects.filter(invigilators__user=request.user)
+        attendance_records = attendance_records.filter(examination__in=assigned_exams)
+        pending_reviews = pending_reviews.filter(examination__in=assigned_exams)
+        identity_checks = identity_checks.filter(examination__in=assigned_exams)
+        recent_activity = recent_activity.filter(user=request.user)
     context = {
-        'total': Attendance.objects.count(),
-        'present': Attendance.objects.filter(attendance_status=Attendance.Status.PRESENT).count(),
-        'manual': Attendance.objects.filter(attendance_status=Attendance.Status.MANUAL).count(),
-        'absent': Attendance.objects.filter(attendance_status=Attendance.Status.ABSENT).count(),
-        'reviews': ManualReview.objects.filter(decision='pending').count(),
-        'identity_checks': IdentityVerification.objects.select_related('student', 'examination', 'checked_by').order_by('-checked_at')[:10],
-        'recent_activity': AuditLog.objects.select_related('user').order_by('-timestamp')[:10],
+        'total': attendance_records.count(),
+        'present': attendance_records.filter(attendance_status=Attendance.Status.PRESENT).count(),
+        'manual': attendance_records.filter(attendance_status=Attendance.Status.MANUAL).count(),
+        'absent': attendance_records.filter(attendance_status=Attendance.Status.ABSENT).count(),
+        'reviews': pending_reviews.count(),
+        'identity_checks': identity_checks.order_by('-checked_at')[:10],
+        'recent_activity': recent_activity.order_by('-timestamp')[:10],
     }
     return render(request, 'reports/reports_dashboard.html', context)
 
@@ -229,24 +367,37 @@ def incident_queue(request):
     ).prefetch_related('events')
     if request.user.role == 'invigilator' and not request.user.is_superuser:
         cases = cases.filter(assigned_invigilator=request.user)
+    active_examinations = Examination.objects.filter(
+        status=Examination.Status.ACTIVE,
+        examination_date=timezone.localdate(),
+    )
+    if request.user.role == 'invigilator' and not request.user.is_superuser:
+        active_examinations = active_examinations.filter(invigilators__user=request.user)
     return render(request, 'incidents/incident_queue.html', {
         'cases': cases,
-        'students': Student.objects.order_by('full_name'),
-        'examinations': Examination.objects.filter(status=Examination.Status.ACTIVE).order_by('examination_date', 'start_time'),
+        'students': Student.objects.filter(
+            exam_registrations__examination__in=active_examinations
+        ).distinct().order_by('full_name'),
+        'examinations': active_examinations.order_by('start_time'),
     })
 
 
 @role_required('admin', 'invigilator')
 @require_POST
+@transaction.atomic
 def incident_create(request):
     student = get_object_or_404(Student, pk=request.POST.get('student_id'))
     examination = get_object_or_404(
-        Examination.objects.filter(status=Examination.Status.ACTIVE),
+        Examination.objects.filter(status=Examination.Status.ACTIVE, examination_date=timezone.localdate()),
         pk=request.POST.get('examination_id'),
     )
     if request.user.role == 'invigilator' and not request.user.is_superuser:
         if not examination.invigilators.filter(pk=getattr(request.user, 'invigilator_profile', None).pk if hasattr(request.user, 'invigilator_profile') else -1).exists():
             raise Http404
+
+    if not ExaminationRegistration.objects.filter(student=student, examination=examination).exists():
+        messages.error(request, 'The selected student is not registered for this examination.')
+        return redirect('incident_queue')
 
     def checked(name):
         return request.POST.get(name) == 'on'

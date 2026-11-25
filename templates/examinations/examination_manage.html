@@ -1,0 +1,23 @@
+{% extends 'base.html' %}
+{% block title %}Manage {{ examination.code }} · Academic Assessment Assurance{% endblock %}
+{% block content %}
+<div class="page-head"><div><p class="eyebrow">Examination operations</p><h1>{{ examination.code }} · {{ examination.title }}</h1><p>{{ examination.examination_date }} · {{ examination.start_time }}–{{ examination.end_time }} · {{ examination.venue }}</p></div><span class="pill">{{ examination.get_status_display }}</span></div>
+<section class="panel">
+  <h2>Examination status</h2>
+  <p>Set the operational status deliberately. Only examinations marked Active are available to staff for live identity checks and incident observations.</p>
+  <form method="post">{% csrf_token %}<input type="hidden" name="action" value="update_status"><p><label for="status">Status</label><select name="status" id="status" required>{% for value,label in status_choices %}<option value="{{ value }}" {% if examination.status == value %}selected{% endif %}>{{ label }}</option>{% endfor %}</select></p><button class="button" type="submit">Update status</button></form>
+</section>
+<section class="panel">
+  <h2>Register candidates</h2><p>Only registered candidates can be selected during identity verification for this examination.</p>
+  {% if available_students %}<form method="post">{% csrf_token %}<input type="hidden" name="action" value="register_student"><p><label for="student">Student</label><select id="student" name="student_id" required><option value="">Choose a student</option>{% for student in available_students %}<option value="{{ student.pk }}">{{ student.admission_number }} — {{ student.full_name }}</option>{% endfor %}</select></p><button class="button" type="submit">Register candidate</button></form>{% else %}<p class="empty-state">All current student records are registered, or no student records exist yet.</p>{% endif %}
+  <h3>Registered candidates ({{ registrations|length }})</h3>
+  <table><tr><th>Admission number</th><th>Student</th><th>Course</th><th>Registered</th></tr>{% for item in registrations %}<tr><td>{{ item.student.admission_number }}</td><td>{{ item.student.full_name }}</td><td>{{ item.student.course }}</td><td>{{ item.registration_date|date:"d M Y, H:i" }}</td></tr>{% empty %}<tr><td colspan="4">No candidates registered for this examination yet.</td></tr>{% endfor %}</table>
+</section>
+<section class="panel">
+  <h2>Assign invigilators</h2><p>Only approved invigilator accounts can be assigned to an examination.</p>
+  {% if available_invigilators %}<form method="post">{% csrf_token %}<input type="hidden" name="action" value="assign_invigilator"><p><label for="invigilator">Approved invigilator</label><select id="invigilator" name="invigilator_id" required><option value="">Choose an invigilator</option>{% for item in available_invigilators %}<option value="{{ item.pk }}">{{ item.staff_number }} — {{ item.full_name }}</option>{% endfor %}</select></p><button class="button" type="submit">Assign invigilator</button></form>{% else %}<p class="empty-state">No approved unassigned invigilators are available. Add an invigilator and approve their account first.</p>{% endif %}
+  <h3>Assigned invigilators ({{ assigned_invigilators|length }})</h3>
+  <table><tr><th>Staff number</th><th>Name</th><th>Department</th><th>Account</th></tr>{% for item in assigned_invigilators %}<tr><td>{{ item.staff_number }}</td><td>{{ item.full_name }}</td><td>{{ item.department }}</td><td>{% if item.user.is_active %}Approved{% else %}Pending approval{% endif %}</td></tr>{% empty %}<tr><td colspan="4">No invigilators assigned yet.</td></tr>{% endfor %}</table>
+</section>
+<p><a href="{% url 'examinations' %}">Back to examinations</a></p>
+{% endblock %}
