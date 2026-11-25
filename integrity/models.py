@@ -82,7 +82,7 @@ class Attendance(models.Model):
     examination = models.ForeignKey(Examination, on_delete=models.CASCADE, related_name='attendance_records')
     attendance_status = models.CharField(max_length=20, choices=Status.choices, default=Status.PRESENT)
     verification_timestamp = models.DateTimeField(auto_now_add=True)
-    verification_method = models.CharField(max_length=40, default='biometric')
+    verification_method = models.CharField(max_length=40, default='staff_identity_check')
     class Meta:
         constraints = [models.UniqueConstraint(fields=['student','examination'], name='unique_attendance')]
 
