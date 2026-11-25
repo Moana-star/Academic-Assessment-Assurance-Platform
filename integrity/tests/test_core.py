@@ -29,6 +29,17 @@ class IntegrityCoreTests(TestCase):
         self.assertEqual(first.pk, second.pk)
         self.assertEqual(Attendance.objects.count(), 1)
 
+    def test_empty_student_and_examination_lists_render_their_empty_state(self):
+        Student.objects.all().delete()
+        Examination.objects.all().delete()
+        self.client.force_login(self.make_admin('empty-state-admin'))
+        students_response = self.client.get('/students/')
+        examinations_response = self.client.get('/examinations/')
+        self.assertContains(students_response, 'No students registered.')
+        self.assertContains(examinations_response, 'No examinations created.')
+        self.assertNotContains(students_response, '{empty}')
+        self.assertNotContains(examinations_response, '{empty}')
+
     def test_student_cannot_open_admin_page(self):
         self.client.login(username='student', password='test-pass-123')
         self.assertEqual(self.client.get('/students/').status_code, 403)
