@@ -1,4 +1,4 @@
-from django.core.management.base import BaseCommand, CommandError
+from django.core.management.base import BaseCommand
 from django.core.management.color import no_style
 from django.db import connections, transaction
 from django.db.models import Q
@@ -142,6 +142,8 @@ class Command(BaseCommand):
                 ManualReview.objects.using(legacy).filter(
                     student_id__in=student_ids,
                     examination_id__in=examination_ids,
+                ).filter(
+                    Q(invigilator_id__isnull=True) | Q(invigilator_id__in=invigilator_ids)
                 ).exclude(reason__icontains="DEMO SAMPLE ONLY"),
                 ManualReview,
             )
