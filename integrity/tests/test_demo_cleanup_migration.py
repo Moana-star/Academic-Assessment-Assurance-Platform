@@ -91,11 +91,14 @@ class RemoveSeededDemoRecordsMigrationTests(TransactionTestCase):
         executor.migrate(executor.loader.graph.leaf_nodes())
         super().tearDownClass()
 
-    def test_demo_students_examinations_reviews_and_audit_are_removed(self):
+    def test_cleanup_removes_demo_data_preserves_real_records_and_quarantines_biometric_attendance(self):
         Student = self.apps.get_model("integrity", "Student")
         Examination = self.apps.get_model("integrity", "Examination")
         ManualReview = self.apps.get_model("integrity", "ManualReview")
         AuditLog = self.apps.get_model("integrity", "AuditLog")
+        Attendance = self.apps.get_model("integrity", "Attendance")
+        BiometricProfile = self.apps.get_model("integrity", "BiometricProfile")
+        VerificationLog = self.apps.get_model("integrity", "VerificationLog")
 
         self.assertFalse(Student.objects.filter(admission_number="DEMO-001").exists())
         self.assertFalse(Examination.objects.filter(code="DEMO-COMP204").exists())
@@ -103,33 +106,18 @@ class RemoveSeededDemoRecordsMigrationTests(TransactionTestCase):
         self.assertFalse(AuditLog.objects.filter(description__icontains="DEMO-").exists())
         self.assertFalse(AuditLog.objects.filter(action__icontains="biometric").exists())
 
-    def test_real_institutional_records_are_preserved(self):
-        Student = self.apps.get_model("integrity", "Student")
-        Examination = self.apps.get_model("integrity", "Examination")
-        AuditLog = self.apps.get_model("integrity", "AuditLog")
-
         self.assertTrue(Student.objects.filter(admission_number="IN13/00091/23").exists())
         self.assertTrue(Examination.objects.filter(code="COMP212").exists())
         self.assertTrue(AuditLog.objects.filter(description__icontains="COMP212").exists())
 
-    def test_old_biometric_attendance_is_not_counted_as_verified(self):
-        Student = self.apps.get_model("integrity", "Student")
-        Examination = self.apps.get_model("integrity", "Examination")
-        Attendance = self.apps.get_model("integrity", "Attendance")
-        ManualReview = self.apps.get_model("integrity", "ManualReview")
-
         student = Student.objects.get(admission_number="IN13/00091/23")
         examination = Examination.objects.get(code="COMP212")
         attendance = Attendance.objects.get(student=student, examination=examination)
-
         self.assertEqual(attendance.attendance_status, "manual")
         self.assertEqual(attendance.verification_method, "legacy_unverified_review_required")
         self.assertTrue(ManualReview.objects.filter(
             student=student, examination=examination, decision="pending"
         ).exists())
 
-    def test_legacy_biometric_templates_and_logs_are_purged(self):
-        BiometricProfile = self.apps.get_model("integrity", "BiometricProfile")
-        VerificationLog = self.apps.get_model("integrity", "VerificationLog")
         self.assertEqual(BiometricProfile.objects.count(), 0)
         self.assertEqual(VerificationLog.objects.count(), 0)
