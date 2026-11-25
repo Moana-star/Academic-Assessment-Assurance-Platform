@@ -75,7 +75,7 @@ def administrator_setup(request, token):
 
 @role_required('admin')
 def pending_accounts(request):
-    pending = User.objects.filter(is_active=False, role__in=[User.Roles.STUDENT, User.Roles.INVIGILATOR]).select_related('student_profile').order_by('date_joined')
+    pending = User.objects.filter(is_active=False, role__in=[User.Roles.STUDENT, User.Roles.INVIGILATOR]).select_related('student_profile', 'invigilator_profile').order_by('date_joined')
     return render(request, 'accounts/pending.html', {'pending_accounts': pending})
 
 @role_required('admin')
@@ -89,7 +89,8 @@ def approve_account(request, user_id):
 
 @login_required
 def dashboard(request):
-    context = {'students_count': Student.objects.count(), 'exams_count': Examination.objects.count(), 'verified_count': Attendance.objects.filter(attendance_status='present').count(), 'reviews_count': ManualReview.objects.filter(decision='pending').count(), 'upcoming': Examination.objects.filter(examination_date__gte=timezone.localdate()).order_by('examination_date')[:5], 'recent_logs': IdentityVerification.objects.select_related('student', 'examination', 'checked_by').order_by('-checked_at')[:6]}
+    today = timezone.localdate()
+    context = {'students_count': Student.objects.count(), 'exams_count': Examination.objects.count(), 'verified_count': Attendance.objects.filter(attendance_status='present').count(), 'reviews_count': ManualReview.objects.filter(decision='pending').count(), 'upcoming': Examination.objects.filter(status=Examination.Status.UPCOMING, examination_date__gte=today).order_by('examination_date')[:5], 'past_active': Examination.objects.filter(status=Examination.Status.ACTIVE, examination_date__lt=today).order_by('examination_date'), 'recent_logs': IdentityVerification.objects.select_related('student', 'examination', 'checked_by').order_by('-checked_at')[:6]}
     if request.user.role == 'student': return render(request, 'dashboard/student_dashboard.html', context)
     if request.user.role == 'invigilator': return render(request, 'dashboard/invigilator_dashboard.html', context)
     return render(request, 'dashboard/admin_dashboard.html', context)
@@ -146,6 +147,10 @@ def examination_manage(request, examination_id):
             status = request.POST.get('status', '')
             if status not in Examination.Status.values:
                 messages.error(request, 'Choose a valid examination status.')
+            elif status == Examination.Status.ACTIVE and examination.examination_date != timezone.localdate():
+                messages.error(request, 'An examination can be marked Active only on its scheduled date. Check the date before changing its status.')
+            elif status == Examination.Status.UPCOMING and examination.examination_date < timezone.localdate():
+                messages.error(request, 'A past examination cannot be marked Upcoming. Mark it Completed or Archived.')
             else:
                 previous = examination.status
                 examination.status = status
@@ -217,13 +222,17 @@ def invigilator_add(request):
 @role_required('admin')
 def examination_add(request):
     form = ExaminationForm(request.POST or None)
-    if form.is_valid(): form.save(); messages.success(request, 'Examination created.'); return redirect('examinations')
+    if form.is_valid():
+        examination = form.save()
+        AuditLog.objects.create(user=request.user, action='examination_created', description=f'Created examination {examination.code}.')
+        messages.success(request, 'Examination created. Register candidates and assign invigilators before the examination begins.')
+        return redirect('examination_manage', examination_id=examination.pk)
     return render(request, 'examinations/examination_form.html', {'form': form, 'title': 'Create examination'})
 
 @role_required('admin', 'invigilator')
 @transaction.atomic
 def verification(request):
-    examinations = Examination.objects.filter(status=Examination.Status.ACTIVE).order_by('examination_date', 'start_time')
+    examinations = Examination.objects.filter(status=Examination.Status.ACTIVE, examination_date=timezone.localdate()).order_by('start_time')
     if request.user.role == 'invigilator' and not request.user.is_superuser:
         invigilator = getattr(request.user, 'invigilator_profile', None)
         if invigilator is None:
@@ -362,7 +371,7 @@ def incident_queue(request):
         'students': Student.objects.filter(
             exam_registrations__examination__status=Examination.Status.ACTIVE
         ).distinct().order_by('full_name'),
-        'examinations': Examination.objects.filter(status=Examination.Status.ACTIVE).order_by('examination_date', 'start_time'),
+        'examinations': Examination.objects.filter(status=Examination.Status.ACTIVE, examination_date=timezone.localdate()).filter(invigilators__user=request.user) if request.user.role == 'invigilator' and not request.user.is_superuser else Examination.objects.filter(status=Examination.Status.ACTIVE, examination_date=timezone.localdate()).order_by('start_time'),
     })
 
 
@@ -372,7 +381,7 @@ def incident_queue(request):
 def incident_create(request):
     student = get_object_or_404(Student, pk=request.POST.get('student_id'))
     examination = get_object_or_404(
-        Examination.objects.filter(status=Examination.Status.ACTIVE),
+        Examination.objects.filter(status=Examination.Status.ACTIVE, examination_date=timezone.localdate()),
         pk=request.POST.get('examination_id'),
     )
     if request.user.role == 'invigilator' and not request.user.is_superuser:
